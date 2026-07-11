@@ -987,17 +987,22 @@ export function CommerceAdmin() {
   useEffect(() => { if (tab === 'overview') loadMetrics(); }, [tab, loadMetrics]);
 
   const handleApprove = async (id: string) => {
-    const { error } = await supabase.rpc('approve_commerce_payment', { p_payment_request_id: id });
+    const { data, error } = await supabase.rpc('approve_commerce_payment', { p_payment_request_id: id });
     if (error) throw error;
-    notify('تم اعتماد الطلب وإضافة النقاط');
+    if (!(data as any)?.ok) throw new Error((data as any)?.error ?? 'فشل الاعتماد');
+    const msg = (data as any)?.idempotent
+      ? 'تم اعتماد هذا الطلب مسبقًا'
+      : 'تم اعتماد الطلب وإضافة النقاط';
+    notify(msg);
     if (tab === 'overview') loadMetrics();
   };
 
   const handleReject = async (id: string, code: string, note: string) => {
-    const { error } = await supabase.rpc('reject_commerce_payment', {
+    const { data, error } = await supabase.rpc('reject_commerce_payment', {
       p_payment_request_id: id, p_reason_code: code, p_note: note,
     });
     if (error) throw error;
+    if (!(data as any)?.ok) throw new Error((data as any)?.error ?? 'فشل الرفض');
     notify('تم رفض الطلب');
   };
 
