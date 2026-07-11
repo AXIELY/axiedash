@@ -1,5 +1,5 @@
-import { useState, useEffect, useCallback } from 'react';
-import { BarChart3, ShoppingCart, CreditCard, Settings, FileText, Users, RefreshCw, CheckCircle, XCircle, Clock, AlertCircle, Eye, ChevronRight, Plus, CreditCard as Edit2, Trash2, Power, Archive, Zap, TrendingUp, DollarSign, Package, Search, Filter, Download, Building2, Phone, Hash, Star, ToggleLeft, ToggleRight, ChevronDown, ChevronUp, Copy, MessageSquare } from 'lucide-react';
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { BarChart3, ShoppingCart, CreditCard, Settings, FileText, Users, RefreshCw, CheckCircle, XCircle, Clock, AlertCircle, Eye, ChevronRight, Plus, CreditCard as Edit2, Trash2, Power, Archive, Zap, TrendingUp, DollarSign, Package, Search, Filter, Download, Building2, Phone, Hash, Star, ToggleLeft, ToggleRight, ChevronDown, ChevronUp, Copy, MessageSquare, Loader2 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useLanguage } from '../../contexts/LanguageContext';
 import { useAuth } from '../../contexts/AuthContext';
@@ -139,7 +139,9 @@ function PaymentsTab({ onApprove, onReject, onRequestInfo, onStartReview }: {
   const [infoCaseId, setInfoCaseId] = useState<string | null>(null);
   const [modal, setModal]           = useState<'reject' | 'info' | 'approve' | null>(null);
   const [working, setWorking]       = useState(false);
+  const [modalError, setModalError] = useState<string | null>(null);
   const [search, setSearch]         = useState('');
+  const submittingRef               = useRef(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -182,17 +184,48 @@ function PaymentsTab({ onApprove, onReject, onRequestInfo, onStartReview }: {
     : requests;
 
   const doApprove = async () => {
-    if (!selected) return;
+    if (!selected || submittingRef.current) return;
+    submittingRef.current = true;
     setWorking(true);
-    try { await onApprove(selected.id); await load(); setModal(null); setSelected(null); }
-    finally { setWorking(false); }
+    setModalError(null);
+    try {
+      await onApprove(selected.id);
+      await load();
+      setModal(null);
+      setSelected(null);
+    } catch (err: any) {
+      const raw: string = err?.message ?? String(err);
+      const errorMap: Record<string, string> = {
+        FORBIDDEN:        'ليس لديك صلاحية اعتماد المدفوعات',
+        NOT_FOUND:        'تعذر العثور على طلب الدفع',
+        ALREADY_APPROVED: 'تم اعتماد هذا الطلب مسبقًا',
+        INVALID_STATUS:   'حالة الطلب الحالية لا تسمح بالاعتماد',
+      };
+      const key = Object.keys(errorMap).find(k => raw.includes(k));
+      setModalError(key ? errorMap[key] : `تعذر الاعتماد: ${raw}`);
+    } finally {
+      setWorking(false);
+      submittingRef.current = false;
+    }
   };
 
   const doReject = async () => {
-    if (!selected || !rejectForm.code) return;
+    if (!selected || !rejectForm.code || submittingRef.current) return;
+    submittingRef.current = true;
     setWorking(true);
-    try { await onReject(selected.id, rejectForm.code, rejectForm.note); await load(); setModal(null); setSelected(null); }
-    finally { setWorking(false); }
+    setModalError(null);
+    try {
+      await onReject(selected.id, rejectForm.code, rejectForm.note);
+      await load();
+      setModal(null);
+      setSelected(null);
+    } catch (err: any) {
+      const raw: string = err?.message ?? String(err);
+      setModalError(`تعذر الرفض: ${raw}`);
+    } finally {
+      setWorking(false);
+      submittingRef.current = false;
+    }
   };
 
   const doRequestInfo = async () => {
@@ -318,17 +351,17 @@ function PaymentsTab({ onApprove, onReject, onRequestInfo, onStartReview }: {
                         style={{ background: 'rgba(139,92,246,0.12)', color: '#a78bfa', border: '1px solid rgba(139,92,246,0.2)' }}>
                         بدء المراجعة
                       </button>
-                      <button onClick={e => { e.stopPropagation(); setModal('approve'); }}
+                      <button onClick={e => { e.stopPropagation(); setModalError(null); setModal('approve'); }}
                         className="px-3 py-1.5 rounded-lg text-xs font-bold"
                         style={{ background: 'rgba(16,185,129,0.12)', color: '#10b981', border: '1px solid rgba(16,185,129,0.2)' }}>
                         موافقة
                       </button>
-                      <button onClick={e => { e.stopPropagation(); setInfoForm({ code: '', msg: '', internal: '' }); setInfoCaseId(null); setModal('info'); }}
+                      <button onClick={e => { e.stopPropagation(); setInfoForm({ code: '', msg: '', internal: '' }); setInfoCaseId(null); setModalError(null); setModal('info'); }}
                         className="px-3 py-1.5 rounded-lg text-xs font-bold"
                         style={{ background: 'rgba(249,115,22,0.12)', color: '#f97316', border: '1px solid rgba(249,115,22,0.2)' }}>
                         طلب بيانات
                       </button>
-                      <button onClick={e => { e.stopPropagation(); setRejectForm({ code: '', note: '' }); setModal('reject'); }}
+                      <button onClick={e => { e.stopPropagation(); setRejectForm({ code: '', note: '' }); setModalError(null); setModal('reject'); }}
                         className="px-3 py-1.5 rounded-lg text-xs font-bold"
                         style={{ background: 'rgba(239,68,68,0.1)', color: '#ef4444', border: '1px solid rgba(239,68,68,0.2)' }}>
                         رفض
@@ -352,13 +385,23 @@ function PaymentsTab({ onApprove, onReject, onRequestInfo, onStartReview }: {
               {selected.total_points ? <> وإضافة <strong style={{ color: '#60a5fa' }}>{selected.total_points}</strong> نقطة</> : ' وإنشاء طلب تنفيذ للخدمة'}.
               <br />لا يمكن تكرار أثر الاعتماد.
             </p>
+            {modalError && (
+              <div className="flex items-start gap-2 p-3 rounded-xl text-sm"
+                style={{ background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.25)', color: '#f87171' }}>
+                <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+                {modalError}
+              </div>
+            )}
             <div className="flex gap-2">
               <button onClick={doApprove} disabled={working}
-                className="flex-1 py-2.5 rounded-xl font-bold text-sm"
+                className="flex-1 py-2.5 rounded-xl font-bold text-sm flex items-center justify-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed"
                 style={{ background: 'linear-gradient(135deg,#10b981,#059669)', color: '#fff' }}>
-                {working ? '...' : 'تأكيد الموافقة'}
+                {working ? <><Loader2 className="w-4 h-4 animate-spin" /> جارٍ الاعتماد...</> : 'تأكيد الموافقة'}
               </button>
-              <button onClick={() => setModal(null)} className="px-4 py-2.5 rounded-xl text-sm" style={{ background: 'rgba(255,255,255,0.05)', color: '#9c8d76' }}>
+              <button onClick={() => { if (!working) { setModal(null); setModalError(null); } }}
+                disabled={working}
+                className="px-4 py-2.5 rounded-xl text-sm disabled:opacity-40"
+                style={{ background: 'rgba(255,255,255,0.05)', color: '#9c8d76' }}>
                 إلغاء
               </button>
             </div>
@@ -380,13 +423,23 @@ function PaymentsTab({ onApprove, onReject, onRequestInfo, onStartReview }: {
               placeholder="ملاحظة إضافية (اختياري)" rows={3}
               className="w-full rounded-xl px-3 py-2 text-sm resize-none"
               style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', color: '#e0d5c5', outline: 'none' }} />
+            {modalError && (
+              <div className="flex items-start gap-2 p-3 rounded-xl text-sm"
+                style={{ background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.25)', color: '#f87171' }}>
+                <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+                {modalError}
+              </div>
+            )}
             <div className="flex gap-2">
               <button onClick={doReject} disabled={working || !rejectForm.code}
-                className="flex-1 py-2.5 rounded-xl font-bold text-sm disabled:opacity-40"
+                className="flex-1 py-2.5 rounded-xl font-bold text-sm disabled:opacity-40 flex items-center justify-center gap-2"
                 style={{ background: 'rgba(239,68,68,0.15)', color: '#ef4444', border: '1px solid rgba(239,68,68,0.3)' }}>
-                {working ? '...' : 'تأكيد الرفض'}
+                {working ? <><Loader2 className="w-4 h-4 animate-spin" /> جارٍ الرفض...</> : 'تأكيد الرفض'}
               </button>
-              <button onClick={() => setModal(null)} className="px-4 py-2.5 rounded-xl text-sm" style={{ background: 'rgba(255,255,255,0.05)', color: '#9c8d76' }}>
+              <button onClick={() => { if (!working) { setModal(null); setModalError(null); } }}
+                disabled={working}
+                className="px-4 py-2.5 rounded-xl text-sm disabled:opacity-40"
+                style={{ background: 'rgba(255,255,255,0.05)', color: '#9c8d76' }}>
                 إلغاء
               </button>
             </div>
