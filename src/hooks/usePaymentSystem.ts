@@ -28,11 +28,32 @@ export interface DBPaymentMethod {
   name_ar: string;
   name_en: string;
   type: string;
-  instructions_ar: string;
-  instructions_en: string;
-  receiver_info: string;
+  instructions_ar: string | null;
+  instructions_en: string | null;
+  description_ar: string | null;
+  description_en: string | null;
+  receiver_info: string | null;
   active: boolean;
+  is_maintenance: boolean;
   sort_order: number;
+  min_amount: number | null;
+  max_amount: number | null;
+  fixed_fee: number;
+  percentage_fee: number;
+  proof_required: boolean;
+  reference_required: boolean;
+  payer_phone_required: boolean;
+  allowed_file_types: string[];
+  max_file_size_mb: number;
+  request_expiry_minutes: number;
+  short_notice_ar: string | null;
+  short_notice_en: string | null;
+  warning_notice_ar: string | null;
+  warning_notice_en: string | null;
+  required_fields_schema: unknown[];
+  support_contact_ar: string | null;
+  // availability_status is set by get_available_payment_methods RPC
+  availability_status?: 'AVAILABLE' | 'INACTIVE' | 'MAINTENANCE' | 'BELOW_MIN' | 'ABOVE_MAX' | 'UNSUPPORTED_TYPE' | 'NO_DESTINATION';
 }
 
 export interface PaymentRequest {
@@ -111,17 +132,13 @@ export const usePaymentSystem = () => {
           .select('*')
           .eq('lifecycle_status', 'ACTIVE')
           .order('order_index'),
-        supabase
-          .from('payment_methods')
-          .select('*')
-          .eq('active', true)
-          .order('sort_order'),
+        // Use RPC for customer-safe method list (includes availability_status)
+        supabase.rpc('get_available_payment_methods', { p_order_type: 'POINT_PACKAGE' }),
       ]);
 
       if (pkgRes.error) {
         console.error('Failed to load packages:', pkgRes.error.message);
       } else {
-        // Compute total_points client-side if column not yet generated
         const mapped = (pkgRes.data || []).map((p: any) => ({
           ...p,
           total_points: p.total_points ?? (p.points + p.bonus_points),
@@ -131,8 +148,11 @@ export const usePaymentSystem = () => {
 
       if (methodRes.error) {
         console.error('Failed to load payment methods:', methodRes.error.message);
+        // Fallback to direct table read
+        const fallback = await supabase.from('payment_methods').select('*').eq('active', true).order('sort_order');
+        if (!fallback.error) setMethods(fallback.data || []);
       } else {
-        setMethods(methodRes.data || []);
+        setMethods((methodRes.data || []) as DBPaymentMethod[]);
       }
     } finally {
       setLoadingPackages(false);
@@ -203,7 +223,7 @@ export const usePaymentSystem = () => {
     senderPhone?: string;
     referenceNumber?: string;
     proofImageFile?: File | null;
-  }): Promise<{ success: boolean; requestCode?: string; message: string }> => {
+  }): Promise<{ success: boolean; requestCode?: string; message: string; destination?: unknown; expiresAt?: string }> => {
     if (!user?.id) {
       return { success: false, message: 'المستخدم غير مسجل الدخول' };
     }
@@ -307,6 +327,8 @@ export const usePaymentSystem = () => {
         success: true,
         requestCode,
         message: `تم إرسال طلب الشحن بنجاح. رمز الطلب: ${requestCode}`,
+        destination: result.destination,
+        expiresAt:   result.expires_at,
       };
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'تعذر إرسال الطلب حالياً. حاول مرة أخرى.';

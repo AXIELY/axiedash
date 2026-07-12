@@ -2,9 +2,11 @@ import { useState, useRef, useCallback, useEffect } from 'react';
 import { useLanguage } from '../../contexts/LanguageContext';
 import { useAuth } from '../../contexts/AuthContext';
 import { usePaymentSystem, DBPaymentPackage, DBPaymentMethod } from '../../hooks/usePaymentSystem';
+import type { PaymentDestination, MethodType as _MethodType } from '../admin/PaymentMethodEditor';
 import {
   ShoppingBag, AlertCircle, Check, X, Upload, Clock,
   ChevronRight, Info, Loader2, Coins, Gem, Crown, Zap, Flame, Tag,
+  Building2, Phone, Wallet, CreditCard, AlertTriangle,
 } from 'lucide-react';
 
 // Premium icon per package tier — rendered as Lucide components
@@ -26,15 +28,27 @@ const PACKAGE_ICON_COLORS: Record<string, string> = {
   legend:  '#E7C38F',
 };
 
-const METHOD_ICONS: Record<string, string> = {
-  libyana: '📱',
-  almadar: '💳',
-  default: '🏦',
+
+// Method type → icon
+function MethodIcon({ type }: { type: string }) {
+  const cls = 'w-5 h-5';
+  if (type === 'BANK_TRANSFER' || type === 'CASH_DEPOSIT') return <Building2 className={cls} />;
+  if (type === 'LIBYANA' || type === 'ALMADAR') return <Phone className={cls} />;
+  if (type === 'MOBILE_WALLET') return <Wallet className={cls} />;
+  return <CreditCard className={cls} />;
+}
+
+const AVAILABILITY_MSG: Record<string, string> = {
+  MAINTENANCE:      'متوقفة مؤقتًا للصيانة',
+  BELOW_MIN:        'المبلغ أقل من الحد الأدنى',
+  ABOVE_MAX:        'المبلغ أعلى من الحد الأقصى',
+  UNSUPPORTED_TYPE: 'غير متاحة لهذا النوع من الطلبات',
+  NO_DESTINATION:   'لا يوجد حساب استقبال متاح حاليًا',
 };
 
 export const PaymentShop = () => {
   const { language } = useLanguage();
-  const { user } = useAuth();
+  useAuth();
   const { packages, methods, myRequests, loadingPackages, submitPaymentRequest, calculatePackagePrice } = usePaymentSystem();
 
   const [selectedPackage, setSelectedPackage]  = useState<DBPaymentPackage | null>(null);
@@ -48,6 +62,8 @@ export const PaymentShop = () => {
   const [submitting,      setSubmitting]       = useState(false);
   const [successCode,     setSuccessCode]      = useState<string | null>(null);
   const [errorMsg,        setErrorMsg]         = useState<string | null>(null);
+  // Destination snapshot returned by the server after order creation (for future receipt display)
+  const [_destSnapshot,   setDestSnapshot]     = useState<Partial<PaymentDestination> | null>(null);
 
   // Server-calculated pricing
   const [pricing, setPricing]           = useState<any>(null);
@@ -91,8 +107,12 @@ export const PaymentShop = () => {
 
   const openModal = (pkg: DBPaymentPackage) => {
     setSelectedPackage(pkg);
-    const firstCode = pkg.payment_methods[0];
-    setSelectedMethod(methods.find(m => m.code === firstCode) || null);
+    // Pick first available method that matches this package's payment_methods list
+    const availableMethods = methods.filter(
+      m => pkg.payment_methods.includes(m.code) &&
+           (!m.availability_status || m.availability_status === 'AVAILABLE')
+    );
+    setSelectedMethod(availableMethods[0] || methods.find(m => pkg.payment_methods.includes(m.code)) || null);
     setSenderPhone('');
     setReferenceNumber('');
     setCouponCode('');
@@ -102,6 +122,7 @@ export const PaymentShop = () => {
     setSuccessCode(null);
     setPricing(null);
     setCouponMsg(null);
+    setDestSnapshot(null);
     setShowModal(true);
   };
 
@@ -113,6 +134,7 @@ export const PaymentShop = () => {
     setProofFile(null);
     setProofPreview(null);
     setErrorMsg(null);
+    setDestSnapshot(null);
   };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -144,9 +166,20 @@ export const PaymentShop = () => {
     setSubmitting(false);
     if (result.success) {
       setSuccessCode(result.requestCode || '');
+      // Store destination snapshot for display after submission (receipt view)
+      if ((result as any).destination) setDestSnapshot((result as any).destination);
       setShowModal(false);
     } else {
-      setErrorMsg(result.message);
+      // Map server-side availability errors to friendly messages
+      const errorMap: Record<string, string> = {
+        method_maintenance:       'طريقة الدفع متوقفة مؤقتًا للصيانة',
+        no_destination_available: 'لا يوجد حساب استقبال متاح حاليًا. يرجى المحاولة لاحقًا.',
+        METHOD_INACTIVE:          'طريقة الدفع غير متاحة',
+        METHOD_MAINTENANCE:       'طريقة الدفع متوقفة مؤقتًا للصيانة',
+        NO_DESTINATION_AVAILABLE: 'لا يوجد حساب استقبال متاح حاليًا',
+      };
+      const mapped = errorMap[result.message] || result.message;
+      setErrorMsg(mapped);
     }
   };
 
@@ -394,49 +427,90 @@ export const PaymentShop = () => {
               <label className="text-xs font-bold uppercase tracking-wider" style={{ color: 'var(--text-3)' }}>
                 {ar ? 'طريقة الدفع' : 'Payment Method'}
               </label>
-              <div className="grid grid-cols-3 gap-2">
+              <div className="grid grid-cols-2 gap-2">
                 {selectedPackage.payment_methods.map(code => {
-                  const m = methods.find(m => m.code === code);
+                  const m = methods.find(mm => mm.code === code);
                   if (!m) return null;
                   const isActive = selectedMethod?.code === code;
+                  const unavailable = m.availability_status && m.availability_status !== 'AVAILABLE';
                   return (
                     <button
                       key={code}
-                      onClick={() => setSelectedMethod(m)}
-                      className="p-3 rounded-[14px] text-center text-xs font-bold transition-all"
+                      onClick={() => { if (!unavailable) setSelectedMethod(m); }}
+                      disabled={!!unavailable}
+                      className="p-3 rounded-[14px] text-start text-xs font-bold transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                       style={{
                         background: isActive ? 'rgba(214,180,123,0.09)' : 'var(--card-2)',
                         border: `1px solid ${isActive ? 'rgba(214,180,123,0.32)' : 'var(--border)'}`,
-                        color: isActive ? 'var(--gold)' : 'var(--text-3)',
+                        color: isActive ? 'var(--gold)' : unavailable ? 'var(--text-3)' : 'var(--text-2)',
                       }}
                     >
-                      <div className="text-xl mb-1">{METHOD_ICONS[code] || METHOD_ICONS.default}</div>
-                      {ar ? m.name_ar : m.name_en}
+                      <div className="flex items-center gap-2 mb-1" style={{ color: isActive ? 'var(--gold)' : 'var(--text-3)' }}>
+                        <MethodIcon type={m.type} />
+                        <span>{ar ? m.name_ar : (m.name_en || m.name_ar)}</span>
+                      </div>
+                      {unavailable && m.availability_status && (
+                        <p className="text-xs text-red-400/70 mt-1">
+                          {AVAILABILITY_MSG[m.availability_status] || 'غير متاح'}
+                        </p>
+                      )}
                     </button>
                   );
                 })}
               </div>
             </div>
 
-            {/* Instructions */}
+            {/* Instructions + Destination */}
             {selectedMethod && (
-              <div
-                className="p-3 rounded-[14px] space-y-1"
-                style={{ background: 'rgba(88,166,255,0.05)', border: '1px solid rgba(88,166,255,0.14)' }}
-              >
-                <div className="flex items-center gap-1.5 text-xs font-bold" style={{ color: '#58A6FF' }}>
-                  <Info className="w-3.5 h-3.5" strokeWidth={1.5} />
-                  {ar ? 'تعليمات الدفع' : 'Payment Instructions'}
-                </div>
-                <p className="text-xs" style={{ color: 'var(--text-2)' }}>
-                  {ar ? selectedMethod.instructions_ar : selectedMethod.instructions_en}
-                </p>
-                {selectedMethod.receiver_info && (
-                  <p className="text-xs font-mono mt-1" style={{ color: '#58A6FF' }}>
-                    {selectedMethod.receiver_info}
-                  </p>
+              <>
+                {/* Warning notice */}
+                {selectedMethod.warning_notice_ar && (
+                  <div
+                    className="flex gap-2 p-3 rounded-[14px]"
+                    style={{ background: 'rgba(245,158,11,0.07)', border: '1px solid rgba(245,158,11,0.18)' }}
+                  >
+                    <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" style={{ color: '#f59e0b' }} />
+                    <p className="text-xs" style={{ color: '#fcd34d' }}>{selectedMethod.warning_notice_ar}</p>
+                  </div>
                 )}
-              </div>
+
+                {/* Instructions */}
+                {selectedMethod.instructions_ar && (
+                  <div
+                    className="p-3 rounded-[14px] space-y-1"
+                    style={{ background: 'rgba(88,166,255,0.05)', border: '1px solid rgba(88,166,255,0.14)' }}
+                  >
+                    <div className="flex items-center gap-1.5 text-xs font-bold" style={{ color: '#58A6FF' }}>
+                      <Info className="w-3.5 h-3.5" strokeWidth={1.5} />
+                      {ar ? 'تعليمات الدفع' : 'Payment Instructions'}
+                    </div>
+                    <p className="text-xs" style={{ color: 'var(--text-2)' }}>
+                      {ar ? selectedMethod.instructions_ar : selectedMethod.instructions_en}
+                    </p>
+                  </div>
+                )}
+
+                {/* Short notice */}
+                {selectedMethod.short_notice_ar && (
+                  <div className="flex gap-1.5 items-start p-2.5 rounded-[12px]" style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)' }}>
+                    <Info className="w-3 h-3 mt-0.5 shrink-0" style={{ color: 'var(--text-3)' }} />
+                    <p className="text-xs" style={{ color: 'var(--text-3)' }}>{selectedMethod.short_notice_ar}</p>
+                  </div>
+                )}
+
+                {/* Unavailability explanation */}
+                {selectedMethod.availability_status && selectedMethod.availability_status !== 'AVAILABLE' && (
+                  <div
+                    className="flex gap-2 p-3 rounded-[14px]"
+                    style={{ background: 'rgba(239,68,68,0.07)', border: '1px solid rgba(239,68,68,0.18)' }}
+                  >
+                    <AlertCircle className="w-4 h-4 flex-shrink-0" style={{ color: '#ef4444' }} />
+                    <p className="text-xs" style={{ color: '#fca5a5' }}>
+                      {AVAILABILITY_MSG[selectedMethod.availability_status] || 'طريقة الدفع غير متاحة حاليًا'}
+                    </p>
+                  </div>
+                )}
+              </>
             )}
 
             {/* Sender phone */}
