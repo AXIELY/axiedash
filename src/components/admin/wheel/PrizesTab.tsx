@@ -938,7 +938,7 @@ export function PrizesTab({ language }: Props) {
   const isAr = language === 'ar';
 
   const fetchSettings = useCallback(async () => {
-    const { data, error: err } = await supabase.from('wheel_game_settings').select('*').maybeSingle();
+    const { data, error: err } = await supabase.from('wheel_game_settings').select('*').eq('active', true).maybeSingle();
     if (err) console.error('[PrizesTab] fetchSettings error:', err);
     if (data) setSettings(data as WheelSettings);
     setLoading(false);

@@ -986,7 +986,11 @@ export function SpinWheelGame({ onOpenMyPrizes, onNavigate }: { onOpenMyPrizes?:
       return;
     }
 
-    const { prizeIndex, prize } = result;
+    const { prizeIndex: serverPrizeIndex, prize } = result;
+    // Resolve the local segment index by prize ID so the animation always lands
+    // on the correct segment even if prizes were reordered after page load.
+    const localIndex = settings.prizes.findIndex(p => p.id === prize.id);
+    const prizeIndex = localIndex >= 0 ? localIndex : serverPrizeIndex;
     const n = settings.prizes.length;
     const slice = 360 / n;
     const centerAngle = prizeIndex * slice + slice / 2;
