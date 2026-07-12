@@ -146,16 +146,7 @@ export function useSpinWheelGame() {
       )
       .subscribe();
 
-    // Refresh when the tab becomes visible again (catches changes made while away)
-    const handleVisibility = () => {
-      if (document.visibilityState === 'visible') fetchSettings();
-    };
-    document.addEventListener('visibilitychange', handleVisibility);
-
-    return () => {
-      supabase.removeChannel(channel);
-      document.removeEventListener('visibilitychange', handleVisibility);
-    };
+    return () => { supabase.removeChannel(channel); };
   }, []);
 
   useEffect(() => {
@@ -259,9 +250,8 @@ export function useSpinWheelGame() {
       spin_request_id: string;
     };
 
-    // Find the matching prize object from settings for local display.
-    // Prefer prize_id lookup (stable across reorders) over prize_index.
-    const prize = settings.prizes.find(p => p.id === result.prize_id) ?? settings.prizes[result.prize_index];
+    // Find the matching prize object from settings for local display
+    const prize = settings.prizes[result.prize_index] ?? settings.prizes.find(p => p.id === result.prize_id);
     if (!prize) {
       setError('حدث خطأ في تحديد الجائزة.');
       setSpinning(false);
