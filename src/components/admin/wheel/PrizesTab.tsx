@@ -938,12 +938,20 @@ export function PrizesTab({ language }: Props) {
   const isAr = language === 'ar';
 
   const fetchSettings = useCallback(async () => {
-    const { data } = await supabase.from('wheel_game_settings').select('*').maybeSingle();
+    const { data, error: err } = await supabase.from('wheel_game_settings').select('*').maybeSingle();
+    if (err) console.error('[PrizesTab] fetchSettings error:', err);
     if (data) setSettings(data as WheelSettings);
     setLoading(false);
   }, []);
 
-  useEffect(() => { fetchSettings(); }, [fetchSettings]);
+  useEffect(() => {
+    fetchSettings();
+    const ch = supabase
+      .channel('prizes_tab_sync')
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'wheel_game_settings' }, () => { fetchSettings(); })
+      .subscribe();
+    return () => { supabase.removeChannel(ch); };
+  }, [fetchSettings]);
 
   const totalWeight = useMemo(() =>
     (settings?.prizes ?? []).reduce((s, p) => s + p.weight, 0), [settings?.prizes]);
@@ -953,11 +961,13 @@ export function PrizesTab({ language }: Props) {
     setSaving(true);
     setSaveError(null);
     try {
-      const { error: dbErr } = await supabase
+      const { data: updatedRows, error: dbErr } = await supabase
         .from('wheel_game_settings')
         .update({ prizes, updated_at: new Date().toISOString() })
-        .eq('id', settings.id);
+        .eq('id', settings.id)
+        .select('id');
       if (dbErr) throw dbErr;
+      if (!updatedRows || updatedRows.length === 0) throw new Error('لم يُعثَر على سجل الإعدادات — حاول تحديث الصفحة');
       // Refetch from DB to confirm persisted state
       await fetchSettings();
       setSuccess(true);
@@ -1007,18 +1017,18 @@ export function PrizesTab({ language }: Props) {
     }
   };
 
-  const moveUp = (idx: number) => {
+  const moveUp = async (idx: number) => {
     if (!settings || idx === 0) return;
     const prizes = [...settings.prizes];
     [prizes[idx - 1], prizes[idx]] = [prizes[idx], prizes[idx - 1]];
-    persist(prizes);
+    await persist(prizes);
   };
 
-  const moveDown = (idx: number) => {
+  const moveDown = async (idx: number) => {
     if (!settings || idx === settings.prizes.length - 1) return;
     const prizes = [...settings.prizes];
     [prizes[idx], prizes[idx + 1]] = [prizes[idx + 1], prizes[idx]];
-    persist(prizes);
+    await persist(prizes);
   };
 
   if (loading) {
