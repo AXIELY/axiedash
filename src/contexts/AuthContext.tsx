@@ -2,12 +2,15 @@ import { createContext, useContext, useEffect, useState, ReactNode } from 'react
 import { supabase, User } from '../lib/supabase';
 import { Session } from '@supabase/supabase-js';
 
+export type AccountStatus = 'ACTIVE' | 'SUSPENDED' | 'BANNED' | 'PENDING_REVIEW';
+
 interface AuthContextType {
   session: Session | null;
   user: User | null;
   loading: boolean;
+  accountStatus: AccountStatus | null;
   signIn: (email: string, password: string) => Promise<void>;
-  signUp: (email: string, password: string, username: string) => Promise<void>;
+  signUp: (email: string, password: string, username: string, phone: string) => Promise<void>;
   signOut: () => Promise<void>;
   refreshUser: () => Promise<void>;
 }
@@ -26,6 +29,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [session, setSession] = useState<Session | null>(null);
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
+  const [accountStatus, setAccountStatus] = useState<AccountStatus | null>(null);
 
   const fetchUserProfile = async (userId: string) => {
     const { data, error } = await supabase
@@ -42,12 +46,22 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     return data;
   };
 
+  const fetchAccountStatus = async () => {
+    const { data } = await supabase.rpc('get_my_account_status');
+    if (data?.account_status) {
+      setAccountStatus(data.account_status as AccountStatus);
+    } else {
+      setAccountStatus('ACTIVE');
+    }
+  };
+
   const refreshUser = async () => {
     if (session?.user) {
       const profile = await fetchUserProfile(session.user.id);
       if (profile) {
         setUser(profile);
       }
+      await fetchAccountStatus();
     }
   };
 
@@ -55,9 +69,13 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
       if (session) {
-        fetchUserProfile(session.user.id).then(setUser);
+        Promise.all([
+          fetchUserProfile(session.user.id).then(setUser),
+          fetchAccountStatus(),
+        ]).finally(() => setLoading(false));
+      } else {
+        setLoading(false);
       }
-      setLoading(false);
     });
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
@@ -66,8 +84,10 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         if (session) {
           const profile = await fetchUserProfile(session.user.id);
           setUser(profile);
+          await fetchAccountStatus();
         } else {
           setUser(null);
+          setAccountStatus(null);
         }
       })();
     });
@@ -85,7 +105,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       .eq('email', email);
   };
 
-  const signUp = async (email: string, password: string, username: string) => {
+  const signUp = async (email: string, password: string, username: string, phone: string) => {
     const { data, error } = await supabase.auth.signUp({ email, password });
     if (error) throw error;
 
@@ -100,6 +120,19 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       if (profileError) {
         console.error('Error creating user profile:', profileError);
         throw new Error('Failed to create user profile');
+      }
+
+      // Register phone in user_accounts (SECURITY DEFINER — validates and stores phone)
+      const { data: regData, error: regError } = await supabase.rpc('register_with_phone', {
+        p_username: username,
+        p_phone: phone,
+      });
+
+      if (regError) {
+        console.error('register_with_phone error:', regError);
+        // Non-fatal: user created, phone registration failed silently
+      } else if (regData && !regData.success) {
+        throw new Error(regData.error || 'REGISTRATION_FAILED');
       }
 
       const { error: xpError } = await supabase.from('xp_log').insert([{
@@ -118,6 +151,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       if (profile) {
         setUser(profile);
       }
+      setAccountStatus('ACTIVE');
     }
   };
 
@@ -127,7 +161,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   };
 
   return (
-    <AuthContext.Provider value={{ session, user, loading, signIn, signUp, signOut, refreshUser }}>
+    <AuthContext.Provider value={{ session, user, loading, accountStatus, signIn, signUp, signOut, refreshUser }}>
       {children}
     </AuthContext.Provider>
   );

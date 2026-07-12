@@ -1,13 +1,60 @@
 import { useState, useEffect } from 'react';
-import { AuthProvider, useAuth } from './contexts/AuthContext';
+import { AuthProvider, useAuth, AccountStatus } from './contexts/AuthContext';
 import { LanguageProvider, useLanguage } from './contexts/LanguageContext';
 import { Login } from './pages/Login';
 import { Dashboard } from './pages/Dashboard';
 import { AdminDashboard } from './pages/AdminDashboard';
 import { useAdmin } from './hooks/useAdmin';
+import { Ban, Clock, LogOut, Crown } from 'lucide-react';
+
+function BlockedScreen({ status, reason, signOut }: { status: AccountStatus; reason?: string | null; signOut: () => void }) {
+  const isBanned = status === 'BANNED';
+  return (
+    <div className="min-h-screen flex items-center justify-center p-4" style={{ background: 'var(--bg)' }}>
+      <div className="w-full max-w-sm text-center space-y-5">
+        <div
+          className="w-16 h-16 rounded-[20px] flex items-center justify-center mx-auto"
+          style={{
+            background: isBanned ? 'rgba(239,68,68,0.12)' : 'rgba(245,158,11,0.12)',
+            border: `1px solid ${isBanned ? 'rgba(239,68,68,0.3)' : 'rgba(245,158,11,0.3)'}`,
+          }}
+        >
+          {isBanned ? <Ban className="w-8 h-8" style={{ color: '#ef4444' }} /> : <Clock className="w-8 h-8" style={{ color: '#f59e0b' }} />}
+        </div>
+        <div>
+          <h2 className="text-xl font-bold mb-2" style={{ color: isBanned ? '#f87171' : '#fbbf24' }}>
+            {isBanned ? 'تم حظر حسابك' : 'حسابك موقوف مؤقتاً'}
+          </h2>
+          <p className="text-sm" style={{ color: 'var(--text-3)' }}>
+            {reason ?? (isBanned
+              ? 'تم حظر هذا الحساب بسبب انتهاك شروط الخدمة.'
+              : 'تم إيقاف هذا الحساب بشكل مؤقت. تواصل مع الدعم.')}
+          </p>
+        </div>
+        <div className="rounded-2xl p-5" style={{ background: 'var(--card)', border: '1px solid var(--border)' }}>
+          <div className="flex items-center gap-2 mb-3">
+            <Crown className="w-4 h-4" style={{ color: 'var(--gold)' }} />
+            <span className="text-sm font-semibold" style={{ color: 'var(--text-2)' }}>للتواصل مع الدعم</span>
+          </div>
+          <p className="text-xs" style={{ color: 'var(--text-3)' }}>
+            إذا كنت تعتقد أن هذا خطأ، يرجى التواصل مع فريق الدعم.
+          </p>
+        </div>
+        <button
+          onClick={signOut}
+          className="flex items-center gap-2 mx-auto text-sm font-medium transition-colors"
+          style={{ color: 'var(--text-3)' }}
+        >
+          <LogOut className="w-4 h-4" />
+          تسجيل الخروج
+        </button>
+      </div>
+    </div>
+  );
+}
 
 function AppContent() {
-  const { session, loading } = useAuth();
+  const { session, loading, accountStatus, user, signOut } = useAuth();
   const { isAdmin } = useAdmin();
   const { t } = useLanguage();
   const [currentRoute, setCurrentRoute] = useState<'dashboard' | 'admin'>('dashboard');
@@ -66,6 +113,14 @@ function AppContent() {
   }
 
   if (!session) return <Login />;
+
+  if (accountStatus === 'SUSPENDED' || accountStatus === 'BANNED') {
+    const reason = accountStatus === 'SUSPENDED'
+      ? (user as any)?.suspension_reason ?? null
+      : (user as any)?.ban_reason ?? null;
+    return <BlockedScreen status={accountStatus} reason={reason} signOut={signOut} />;
+  }
+
   if (currentRoute === 'admin' && isAdmin) return <AdminDashboard />;
   return <Dashboard />;
 }

@@ -18,6 +18,7 @@ import { CampaignManagement } from '../components/admin/CampaignManagement';
 import { EngagementManagement } from '../components/admin/EngagementManagement';
 import { PointStoreManagement } from '../components/admin/PointStoreManagement';
 import { CommerceAdmin } from '../components/admin/CommerceAdmin';
+import { UsersManagement } from '../components/admin/UsersManagement';
 
 interface DashboardStats {
   totalUsers: number; totalOrders: number; pendingOrders: number;
@@ -106,6 +107,7 @@ export const AdminDashboard = () => {
     { id: 'offers',    label: t('admin.offers'),    icon: Gift },
     { id: 'reports',   label: t('admin.reports'),   icon: Flag },
     { id: 'engagement', label: language === 'ar' ? 'التفاعل' : 'Engagement', icon: Zap },
+    { id: 'users',    label: language === 'ar' ? 'المستخدمون' : 'Users', icon: Users },
     { id: 'settings',  label: t('admin.settings'),  icon: Settings },
   ];
 
@@ -172,6 +174,7 @@ export const AdminDashboard = () => {
       case 'reports':    return <ReportedMessagesManagement />;
       case 'engagement': return <EngagementManagement />;
       case 'commerce':   return <CommerceAdmin />;
+      case 'users':      return <UsersManagement />;
       default:
         return (
           <div className="space-y-6">
