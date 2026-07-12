@@ -23,7 +23,7 @@ const RIGHT_BANK: import('./GameLaunchPad').GameCardData[] = [
     titleEn: 'AXIE Wheel',
     descAr: 'أدر العجلة واربح جوائز ومكافآت متنوعة',
     descEn: 'Spin the wheel and win varied prizes',
-    page: 'games',
+    page: 'wheel',
     accentColor: '#3FB950',
     players: 156,
     tag: 'NEW',
