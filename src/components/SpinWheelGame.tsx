@@ -1,8 +1,8 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useAuth } from '../contexts/AuthContext';
-import { useSpinWheelGame, WheelPrize } from '../hooks/useSpinWheelGame';
-import { AlertCircle, X, Crown } from 'lucide-react';
+import { useSpinWheelGame, WheelPrize, PrizeState } from '../hooks/useSpinWheelGame';
+import { AlertCircle, X, Crown, Lock } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { LiveWinnerFeed } from './LiveWinnerFeed';
 import { EventStrip } from './EventStrip';
@@ -169,12 +169,14 @@ function WheelSVG({
   winnerIndex,
   hasWinner,
   rotatorRef,
+  prizeStates,
 }: {
   prizes: WheelPrize[];
   rotation: number;
   winnerIndex: number | null;
   hasWinner: boolean;
   rotatorRef: React.Ref<SVGGElement>;
+  prizeStates?: PrizeState[];
 }) {
   const n = prizes.length;
   if (n === 0) return null;
@@ -190,6 +192,14 @@ function WheelSVG({
     const fill = index % 2 === 0 ? 'url(#sectorGold)' : 'url(#sectorDark)';
     const isWinner = winnerIndex === index && hasWinner;
     const rarity = rarityForPrize(prize);
+    const mode = prize.availability_mode ?? 'ALWAYS_ACTIVE';
+    const state = prizeStates?.find(s => s.prize_id === prize.id);
+    const isLocked = mode === 'LOCKED_BY_GOAL' && state && !state.is_unlocked;
+    const isExhausted = (mode === 'LIMITED_STOCK' && state && state.current_stock !== null && state.current_stock <= 0)
+      || (mode === 'LIMITED_WINNERS' && state && prize.max_winners && state.total_winners >= prize.max_winners);
+    const isScheduledInactive = mode === 'SCHEDULED' && prize.starts_at && prize.ends_at
+      && (new Date() < new Date(prize.starts_at) || new Date() > new Date(prize.ends_at));
+    const showOverlay = isLocked || isExhausted || isScheduledInactive;
 
     return (
       <g
@@ -239,6 +249,39 @@ function WheelSVG({
             {prize.short_label || (prize.name_ar.length > 8 ? prize.name_ar.slice(0, 8) : prize.name_ar)}
           </text>
         </g>
+        {showOverlay && (
+          <g>
+            <path
+              d={arcPath(CX, CY, R_OUTER, R_INNER, start, end)}
+              fill="rgba(0,0,0,0.55)"
+              style={{ pointerEvents: 'none' }}
+            />
+            <g transform={`translate(${iconPos.x} ${iconPos.y})`}>
+              {isLocked ? (
+                <g>
+                  <rect x={-14} y={-14} width={28} height={28} rx={6}
+                    fill="rgba(0,0,0,0.7)" stroke="#f59e0b" strokeWidth="1.5" />
+                  <path d="M-5 2V-2a5 5 0 0 1 10 0v4" fill="none" stroke="#f59e0b" strokeWidth="1.8" strokeLinecap="round" />
+                  <rect x={-6} y={2} width={12} height={9} rx={2} fill="#f59e0b" opacity={0.9} />
+                </g>
+              ) : isExhausted ? (
+                <g>
+                  <rect x={-14} y={-14} width={28} height={28} rx={6}
+                    fill="rgba(0,0,0,0.7)" stroke="#ef4444" strokeWidth="1.5" />
+                  <line x1={-6} y1={-6} x2={6} y2={6} stroke="#ef4444" strokeWidth="2" strokeLinecap="round" />
+                  <line x1={6} y1={-6} x2={-6} y2={6} stroke="#ef4444" strokeWidth="2" strokeLinecap="round" />
+                </g>
+              ) : (
+                <g>
+                  <rect x={-14} y={-14} width={28} height={28} rx={6}
+                    fill="rgba(0,0,0,0.7)" stroke="#60a5fa" strokeWidth="1.5" />
+                  <circle cx={0} cy={0} r={7} fill="none" stroke="#60a5fa" strokeWidth="1.8" />
+                  <path d="M0 -4V1L3 3" fill="none" stroke="#60a5fa" strokeWidth="1.5" strokeLinecap="round" />
+                </g>
+              )}
+            </g>
+          </g>
+        )}
       </g>
     );
   });
@@ -559,7 +602,7 @@ function HistorySlot({ prize }: { prize: WheelPrize | null }) {
 }
 
 // ─── Prize list item ──────────────────────────────────────────────────────────
-function PrizeListItem({ prize, language }: { prize: WheelPrize; language: string }) {
+function PrizeListItem({ prize, language, prizeState }: { prize: WheelPrize; language: string; prizeState?: PrizeState }) {
   const rarity = rarityForPrize(prize);
   const isGrand = prize.type === 'grand';
   return (
@@ -581,6 +624,22 @@ function PrizeListItem({ prize, language }: { prize: WheelPrize; language: strin
         <small style={{ display: 'block', color: '#c5a17b', fontSize: '13px' }}>
           {prize.value}
         </small>
+        {prize.availability_mode === 'LOCKED_BY_GOAL' && prizeState && !prizeState.is_unlocked && (
+          <div className="mt-1.5">
+            <div className="flex items-center gap-1.5 mb-1">
+              <Lock className="w-3 h-3" style={{ color: '#f59e0b' }} />
+              <span style={{ fontSize: '10px', color: '#f59e0b', fontWeight: 700 }}>
+                {prizeState.current_progress}/{prize.unlock_target_value ?? 0}
+              </span>
+            </div>
+            <div className="h-1 rounded-full overflow-hidden" style={{ background: 'rgba(255,255,255,0.06)', width: '100%' }}>
+              <div className="h-full rounded-full" style={{
+                width: `${Math.min(100, ((prizeState.current_progress || 0) / (prize.unlock_target_value || 1)) * 100)}%`,
+                background: '#f59e0b',
+              }} />
+            </div>
+          </div>
+        )}
       </div>
       <div
         className="prize-item__medallion"
@@ -619,6 +678,7 @@ export function SpinWheelGame({ onOpenMyPrizes }: { onOpenMyPrizes?: (caseId?: s
     commitSpin,
     clearLastWin,
     lastFulfillmentCase,
+    prizeStates,
   } = useSpinWheelGame();
 
   const onOpenPrizeCase = (caseId: string) => {
@@ -1262,6 +1322,7 @@ export function SpinWheelGame({ onOpenMyPrizes }: { onOpenMyPrizes?: (caseId?: s
                       winnerIndex={winnerIndex}
                       hasWinner={hasWinner}
                       rotatorRef={rotatorRef}
+                      prizeStates={prizeStates}
                     />
                   </div>
                 </div>
@@ -1360,7 +1421,7 @@ export function SpinWheelGame({ onOpenMyPrizes }: { onOpenMyPrizes?: (caseId?: s
               </div>
               <div className="space-y-2.5 overflow-y-auto max-h-[280px] pe-0.5">
                 {uniquePrizeTypes.filter(p => p.type !== 'miss').map(prize => (
-                  <PrizeListItem key={prize.id} prize={prize} language={language} />
+                  <PrizeListItem key={prize.id} prize={prize} language={language} prizeState={prizeStates.find(s => s.prize_id === prize.id)} />
                 ))}
               </div>
             </div>
@@ -1393,7 +1454,7 @@ export function SpinWheelGame({ onOpenMyPrizes }: { onOpenMyPrizes?: (caseId?: s
             </h3>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               {uniquePrizeTypes.filter(p => p.type !== 'miss').map(prize => (
-                <PrizeListItem key={prize.id} prize={prize} language={language} />
+                <PrizeListItem key={prize.id} prize={prize} language={language} prizeState={prizeStates.find(s => s.prize_id === prize.id)} />
               ))}
             </div>
           </div>

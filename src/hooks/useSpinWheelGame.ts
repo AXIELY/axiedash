@@ -2,6 +2,14 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 
+export type AvailabilityMode =
+  | 'ALWAYS_ACTIVE'
+  | 'LOCKED_BY_GOAL'
+  | 'SCHEDULED'
+  | 'LIMITED_STOCK'
+  | 'LIMITED_WINNERS'
+  | 'EVENT_ONLY';
+
 export interface WheelPrize {
   id: string;
   name_ar: string;
@@ -23,6 +31,19 @@ export interface WheelPrize {
   icon_shape?: string;
   rarity?: string;
   icon_preset?: string;
+  // Availability fields
+  availability_mode?: AvailabilityMode;
+  starts_at?: string | null;
+  ends_at?: string | null;
+  unlock_target_metric?: string | null;
+  unlock_target_value?: number | null;
+  initial_stock?: number | null;
+  max_winners?: number | null;
+  max_wins_per_user?: number | null;
+  user_cooldown_days?: number | null;
+  locked_visibility?: 'visible' | 'hidden' | 'silhouette';
+  event_tag?: string | null;
+  fallback_prize_id?: string | null;
 }
 
 // Prize types that require manual admin fulfillment
@@ -72,6 +93,16 @@ function weightedPick(prizes: WheelPrize[], excludeIds: string[]): number {
   return available[available.length - 1].originalIndex;
 }
 
+export interface PrizeState {
+  prize_id: string;
+  settings_id: string;
+  is_unlocked: boolean;
+  current_stock: number | null;
+  total_winners: number;
+  current_progress: number;
+  last_evaluated_at: string | null;
+}
+
 export interface FulfillmentCaseRef {
   caseId: string;
   threadId: string;
@@ -89,6 +120,7 @@ export function useSpinWheelGame() {
   const [lastFulfillmentCase, setLastFulfillmentCase] = useState<FulfillmentCaseRef | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [spinV2Enabled, setSpinV2Enabled] = useState(false);
+  const [prizeStates, setPrizeStates] = useState<PrizeState[]>([]);
 
   // Pending server result for spinV2 — resolved after wheel animation ends
   const pendingServerResult = useRef<{
@@ -105,7 +137,10 @@ export function useSpinWheelGame() {
   }, []);
 
   useEffect(() => {
-    if (user?.id) fetchSpinsToday();
+    if (user?.id) {
+      fetchSpinsToday();
+      fetchPrizeStates();
+    }
   }, [user?.id]);
 
   const fetchFlags = async () => {
@@ -133,6 +168,15 @@ export function useSpinWheelGame() {
       console.error('Error fetching wheel settings:', err);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchPrizeStates = async () => {
+    try {
+      const { data } = await supabase.rpc('get_wheel_prize_states');
+      if (data) setPrizeStates(data as PrizeState[]);
+    } catch (err) {
+      console.error('Error fetching prize states:', err);
     }
   };
 
@@ -367,5 +411,7 @@ export function useSpinWheelGame() {
     clearLastWin,
     fetchSettings,
     spinV2Enabled,
+    prizeStates,
+    fetchPrizeStates,
   };
 }
