@@ -134,6 +134,19 @@ export function useSpinWheelGame() {
   useEffect(() => {
     fetchSettings();
     fetchFlags();
+
+    // Subscribe to admin changes on wheel_game_settings so the player wheel
+    // updates immediately when an admin edits prizes without requiring a page refresh.
+    const channel = supabase
+      .channel('wheel_settings_sync')
+      .on(
+        'postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'wheel_game_settings' },
+        () => { fetchSettings(); }
+      )
+      .subscribe();
+
+    return () => { supabase.removeChannel(channel); };
   }, []);
 
   useEffect(() => {

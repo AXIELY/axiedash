@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback, useRef } from 'react';
+import { useState, useMemo, useCallback, useRef, useEffect } from 'react';
 import {
   Plus, CreditCard as Edit2, Trash2, Save, X, ChevronDown, ChevronUp,
   Eye, Upload, Image as ImageIcon, RotateCcw, Lock, Clock, Package,
@@ -245,9 +245,11 @@ interface PrizeEditorProps {
   onSave: (p: WheelPrize & { rarity: string }) => void;
   onClose: () => void;
   language: string;
+  saving?: boolean;
+  saveError?: string | null;
 }
 
-function PrizeEditor({ prize, totalWeight, allPrizes, onSave, onClose, language }: PrizeEditorProps) {
+function PrizeEditor({ prize, totalWeight, allPrizes, onSave, onClose, language, saving = false, saveError = null }: PrizeEditorProps) {
   const [activeTab, setActiveTab] = useState<EditorTab>('basic');
   const [form, setForm] = useState<FormState>({
     name_ar:              prize.name_ar              ?? '',
@@ -865,19 +867,36 @@ function PrizeEditor({ prize, totalWeight, allPrizes, onSave, onClose, language 
         </div>
 
         {/* Footer */}
-        <div className="flex gap-3 px-6 py-4 flex-shrink-0"
-          style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}>
-          <button onClick={handleSave} disabled={!form.name_ar || !form.name_en || uploading}
-            className="flex-1 flex items-center justify-center gap-2 py-3 font-bold rounded-xl transition-all disabled:opacity-40"
-            style={{ background: 'linear-gradient(135deg, #d4a853, #b8882e)', color: '#0a0608' }}>
-            <Save className="w-4 h-4" />
-            {isAr ? 'حفظ الجائزة' : 'Save Prize'}
-          </button>
-          <button onClick={onClose}
-            className="px-6 py-3 font-bold rounded-xl transition-all"
-            style={{ background: 'rgba(255,255,255,0.05)', color: 'rgba(255,255,255,0.5)', border: '1px solid rgba(255,255,255,0.1)' }}>
-            {isAr ? 'إلغاء' : 'Cancel'}
-          </button>
+        <div className="flex-shrink-0" style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+          {saveError && (
+            <div className="mx-6 mt-4 px-4 py-3 rounded-xl text-sm font-semibold"
+              style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.25)', color: '#fca5a5' }}>
+              {saveError}
+            </div>
+          )}
+          <div className="flex gap-3 px-6 py-4">
+            <button onClick={handleSave}
+              disabled={!form.name_ar || !form.name_en || uploading || saving}
+              className="flex-1 flex items-center justify-center gap-2 py-3 font-bold rounded-xl transition-all disabled:opacity-50"
+              style={{ background: 'linear-gradient(135deg, #d4a853, #b8882e)', color: '#0a0608' }}>
+              {saving ? (
+                <>
+                  <div className="w-4 h-4 border-2 border-[#0a0608]/30 border-t-[#0a0608] rounded-full animate-spin" />
+                  {isAr ? 'جارٍ الحفظ...' : 'Saving...'}
+                </>
+              ) : (
+                <>
+                  <Save className="w-4 h-4" />
+                  {isAr ? 'حفظ الجائزة' : 'Save Prize'}
+                </>
+              )}
+            </button>
+            <button onClick={onClose} disabled={saving}
+              className="px-6 py-3 font-bold rounded-xl transition-all disabled:opacity-40"
+              style={{ background: 'rgba(255,255,255,0.05)', color: 'rgba(255,255,255,0.5)', border: '1px solid rgba(255,255,255,0.1)' }}>
+              {isAr ? 'إلغاء' : 'Cancel'}
+            </button>
+          </div>
         </div>
       </div>
     </div>
@@ -911,6 +930,7 @@ export function PrizesTab({ language }: Props) {
   const [settings, setSettings] = useState<WheelSettings | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
   const [editPrize, setEditPrize] = useState<(WheelPrize & { rarity?: string }) | null>(null);
   const [showEditor, setShowEditor] = useState(false);
   const [expandedId, setExpandedId] = useState<string | null>(null);
@@ -923,21 +943,34 @@ export function PrizesTab({ language }: Props) {
     setLoading(false);
   }, []);
 
-  useState(() => { fetchSettings(); });
+  useEffect(() => { fetchSettings(); }, [fetchSettings]);
 
   const totalWeight = useMemo(() =>
     (settings?.prizes ?? []).reduce((s, p) => s + p.weight, 0), [settings?.prizes]);
 
-  const persist = async (prizes: (WheelPrize & { rarity?: string })[]) => {
-    if (!settings) return;
+  const persist = async (prizes: (WheelPrize & { rarity?: string })[]): Promise<boolean> => {
+    if (!settings) return false;
     setSaving(true);
+    setSaveError(null);
     try {
-      await supabase.from('wheel_game_settings')
+      const { error: dbErr } = await supabase
+        .from('wheel_game_settings')
         .update({ prizes, updated_at: new Date().toISOString() })
         .eq('id', settings.id);
-      setSettings({ ...settings, prizes: prizes as WheelPrize[] });
+      if (dbErr) throw dbErr;
+      // Refetch from DB to confirm persisted state
+      await fetchSettings();
       setSuccess(true);
-      setTimeout(() => setSuccess(false), 2000);
+      setTimeout(() => setSuccess(false), 2500);
+      return true;
+    } catch (e: any) {
+      const msg: string = e?.message ?? '';
+      setSaveError(
+        msg.includes('permission') || msg.includes('policy') || msg.includes('row-level')
+          ? 'لا تملك صلاحية تعديل الجوائز'
+          : 'تعذر حفظ تعديلات الجائزة'
+      );
+      return false;
     } finally {
       setSaving(false);
     }
@@ -950,24 +983,28 @@ export function PrizesTab({ language }: Props) {
     const updated = idx >= 0
       ? prizes.map((p, i) => i === idx ? prize : p)
       : [...prizes, prize];
-    await persist(updated);
-    setShowEditor(false);
-    setEditPrize(null);
-    supabase.rpc('log_admin_action', {
-      p_action_type: idx >= 0 ? 'prize_updated' : 'prize_created',
-      p_entity_type: 'prize', p_entity_id: prize.id,
-      p_change_summary: `${idx >= 0 ? '\u062A\u0639\u062F\u064A\u0644' : '\u0625\u0646\u0634\u0627\u0621'} \u062C\u0627\u0626\u0632\u0629: ${prize.name_ar}`,
-    }).then(() => {});
+    const ok = await persist(updated);
+    if (ok) {
+      setShowEditor(false);
+      setEditPrize(null);
+      supabase.rpc('log_admin_action', {
+        p_action_type: idx >= 0 ? 'prize_updated' : 'prize_created',
+        p_entity_type: 'prize', p_entity_id: prize.id,
+        p_change_summary: `${idx >= 0 ? 'تعديل' : 'إنشاء'} جائزة: ${prize.name_ar}`,
+      }).then(() => {});
+    }
   };
 
   const handleDelete = async (id: string) => {
     if (!settings) return;
-    if (!confirm(isAr ? '\u0647\u0644 \u062A\u0631\u064A\u062F \u062D\u0630\u0641 \u0647\u0630\u0647 \u0627\u0644\u062C\u0627\u0626\u0632\u0629\u061F' : 'Delete this prize?')) return;
+    if (!confirm(isAr ? 'هل تريد حذف هذه الجائزة؟' : 'Delete this prize?')) return;
     const updated = settings.prizes.filter(p => p.id !== id);
-    await persist(updated);
-    supabase.rpc('log_admin_action', {
-      p_action_type: 'prize_deleted', p_entity_type: 'prize', p_entity_id: id,
-    }).then(() => {});
+    const ok = await persist(updated);
+    if (ok) {
+      supabase.rpc('log_admin_action', {
+        p_action_type: 'prize_deleted', p_entity_type: 'prize', p_entity_id: id,
+      }).then(() => {});
+    }
   };
 
   const moveUp = (idx: number) => {
@@ -1130,9 +1167,11 @@ export function PrizesTab({ language }: Props) {
         </div>
       )}
 
-      {saving && (
-        <div className="text-center py-2 text-xs" style={{ color: '#D6AA62' }}>
-          {isAr ? '\u062C\u0627\u0631\u064D \u0627\u0644\u062D\u0641\u0638...' : 'Saving...'}
+      {/* Inline error shown when editor is closed (e.g. reorder/delete failures) */}
+      {saveError && !showEditor && (
+        <div className="px-4 py-3 rounded-xl text-sm font-semibold"
+          style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.25)', color: '#fca5a5' }}>
+          {saveError}
         </div>
       )}
 
@@ -1142,8 +1181,10 @@ export function PrizesTab({ language }: Props) {
           totalWeight={totalWeight}
           allPrizes={prizes}
           onSave={handleSavePrize}
-          onClose={() => { setShowEditor(false); setEditPrize(null); }}
+          onClose={() => { setShowEditor(false); setEditPrize(null); setSaveError(null); }}
           language={language}
+          saving={saving}
+          saveError={saveError}
         />
       )}
     </div>
