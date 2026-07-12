@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Menu, MessageCircle, X, Bell, Search, Sparkles } from 'lucide-react';
+import { NotificationBell } from '../components/NotificationBell';
 import { Sidebar } from '../components/Sidebar';
 import { ChatPanel } from '../components/ChatPanel';
 import { DashboardHome } from '../components/DashboardHome';
@@ -16,6 +17,8 @@ import { ServicesDashboard } from '../components/ServicesDashboard';
 import { DailyLoginModal } from '../components/DailyLoginModal';
 import { MyPrizesCenter } from '../components/MyPrizesCenter';
 import { MyOrders } from '../components/MyOrders';
+import { NotificationsPage } from '../components/NotificationsPage';
+import { NotificationSettings } from '../components/NotificationSettings';
 import { useAuth } from '../contexts/AuthContext';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useDailyLogin } from '../hooks/useDailyLogin';
@@ -36,7 +39,8 @@ const PAGE_LABELS: Record<string, { ar: string; en: string }> = {
   services:     { ar: 'الخدمات', en: 'Services' },
   support:      { ar: 'الدعم', en: 'Support' },
   prizes:       { ar: 'جوائزي', en: 'My Prizes' },
-  'my-orders':  { ar: 'طلباتي', en: 'My Orders' },
+  'my-orders':     { ar: 'طلباتي', en: 'My Orders' },
+  notifications:   { ar: 'الإشعارات', en: 'Notifications' },
 };
 
 export const Dashboard = () => {
@@ -96,8 +100,10 @@ export const Dashboard = () => {
       case 'achievements': return <Achievements />;
       case 'shop':         return <PaymentShop />;
       case 'prizes':       return <MyPrizesCenter language={language} initialCaseId={openCaseId} />;
-      case 'my-orders':    return <MyOrders />;
-      default:             return <DashboardHome setCurrentPage={setCurrentPage} />;
+      case 'my-orders':       return <MyOrders />;
+      case 'notifications':          return <NotificationsPage onNavigate={setCurrentPage} />;
+      case 'notification-settings':  return <NotificationSettings onBack={() => setCurrentPage('notifications')} />;
+      default:                       return <DashboardHome setCurrentPage={setCurrentPage} />;
     }
   };
 
@@ -188,20 +194,7 @@ export const Dashboard = () => {
             </button>
 
             {/* Notifications */}
-            <button
-              className="w-9 h-9 rounded-xl flex items-center justify-center transition-all duration-200 relative"
-              style={{
-                background: 'var(--card-2)',
-                border: '1px solid var(--border)',
-                color: 'var(--text-2)',
-              }}
-            >
-              <Bell className="w-4 h-4" strokeWidth={1.5} />
-              <span
-                className="absolute top-1.5 end-1.5 w-1.5 h-1.5 rounded-full"
-                style={{ background: 'var(--gold)' }}
-              />
-            </button>
+            <NotificationBell onNavigate={setCurrentPage} />
 
             {/* Avatar */}
             {user?.avatar_url ? (

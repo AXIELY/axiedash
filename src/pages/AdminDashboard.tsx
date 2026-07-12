@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import {
-  Users, Settings, Package, Gift, ShoppingCart, BarChart3,
+  Users, Settings, Package, Gift, ShoppingCart, BarChart3, Bell,
   Gamepad2, DollarSign, TrendingUp, ArrowRight, ArrowLeft, Clock,
   CheckCircle, AlertCircle, XCircle, Flag, Crown, Zap, Menu, X, Star, Megaphone,
 } from 'lucide-react';
@@ -19,6 +19,7 @@ import { EngagementManagement } from '../components/admin/EngagementManagement';
 import { PointStoreManagement } from '../components/admin/PointStoreManagement';
 import { CommerceAdmin } from '../components/admin/CommerceAdmin';
 import { UsersManagement } from '../components/admin/UsersManagement';
+import { NotificationAdmin } from '../components/admin/NotificationAdmin';
 
 interface DashboardStats {
   totalUsers: number; totalOrders: number; pendingOrders: number;
@@ -107,8 +108,9 @@ export const AdminDashboard = () => {
     { id: 'offers',    label: t('admin.offers'),    icon: Gift },
     { id: 'reports',   label: t('admin.reports'),   icon: Flag },
     { id: 'engagement', label: language === 'ar' ? 'التفاعل' : 'Engagement', icon: Zap },
-    { id: 'users',    label: language === 'ar' ? 'المستخدمون' : 'Users', icon: Users },
-    { id: 'settings',  label: t('admin.settings'),  icon: Settings },
+    { id: 'users',         label: language === 'ar' ? 'المستخدمون' : 'Users', icon: Users },
+    { id: 'notifications', label: language === 'ar' ? 'الإشعارات' : 'Notifications', icon: Bell },
+    { id: 'settings',      label: t('admin.settings'),  icon: Settings },
   ];
 
   const statusColor = (s: string) => ({ completed:'text-green-400', pending:'text-amber-400', processing:'text-blue-400', cancelled:'text-red-400' }[s] || 'text-white/40');
@@ -174,7 +176,8 @@ export const AdminDashboard = () => {
       case 'reports':    return <ReportedMessagesManagement />;
       case 'engagement': return <EngagementManagement />;
       case 'commerce':   return <CommerceAdmin />;
-      case 'users':      return <UsersManagement />;
+      case 'users':         return <UsersManagement />;
+      case 'notifications': return <NotificationAdmin />;
       default:
         return (
           <div className="space-y-6">

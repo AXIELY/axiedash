@@ -156,6 +156,18 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   };
 
   const signOut = async () => {
+    // Deactivate push subscription before signing out to prevent cross-account notifications
+    try {
+      if ('serviceWorker' in navigator) {
+        const reg = await navigator.serviceWorker.ready;
+        const sub = await reg.pushManager.getSubscription();
+        if (sub) {
+          await supabase.rpc('deactivate_push_subscription', { p_endpoint: sub.endpoint });
+        }
+      }
+    } catch {
+      // Non-fatal
+    }
     const { error } = await supabase.auth.signOut();
     if (error) throw error;
   };
