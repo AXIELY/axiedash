@@ -1,11 +1,12 @@
 import { useState } from 'react';
 import {
   LayoutDashboard, Settings, Gift, BarChart3, Trophy, Star,
-  CalendarDays, FlaskConical, Package, Shield, Layers,
+  CalendarDays, FlaskConical, Package, Shield, Layers, Activity,
 } from 'lucide-react';
 import { OverviewTab }         from './OverviewTab';
 import { SettingsTab }         from './SettingsTab';
 import { PrizesTab }           from './PrizesTab';
+import { PrizeStatesTab }      from './PrizeStatesTab';
 import { ProbabilityTab }      from './ProbabilityTab';
 import { ProgressionTab }      from './ProgressionTab';
 import { LeaderboardAdminTab } from './LeaderboardAdminTab';
@@ -19,6 +20,7 @@ type TabId =
   | 'overview'
   | 'settings'
   | 'prizes'
+  | 'prize-states'
   | 'probability'
   | 'progression'
   | 'leaderboard'
@@ -40,6 +42,7 @@ const TABS: Tab[] = [
   { id: 'overview',     icon: LayoutDashboard, ar: 'نظرة عامة',          en: 'Overview',      color: '#D6AA62'  },
   { id: 'settings',     icon: Settings,        ar: 'الإعدادات',           en: 'Settings',      color: '#22d3ee'  },
   { id: 'prizes',       icon: Gift,            ar: 'الجوائز',             en: 'Prizes',        color: '#34d399'  },
+  { id: 'prize-states', icon: Activity,        ar: 'حالة الجوائز',        en: 'Prize States',  color: '#f97316'  },
   { id: 'probability',  icon: BarChart3,       ar: 'الاحتمالات',          en: 'Probability',   color: '#a78bfa'  },
   { id: 'progression',  icon: Layers,          ar: 'التقدم',              en: 'Progression',   color: '#f97316'  },
   { id: 'leaderboard',  icon: Trophy,          ar: 'المتصدرون',           en: 'Leaderboard',   color: '#fbbf24'  },
@@ -100,8 +103,9 @@ export function WheelAdminShell({ language }: Props) {
       <div>
         {activeTab === 'overview'    && <OverviewTab         language={language} />}
         {activeTab === 'settings'    && <SettingsTab         language={language} />}
-        {activeTab === 'prizes'      && <PrizesTab           language={language} />}
-        {activeTab === 'probability' && <ProbabilityTab      language={language} />}
+        {activeTab === 'prizes'       && <PrizesTab           language={language} />}
+        {activeTab === 'prize-states' && <PrizeStatesTab     language={language} />}
+        {activeTab === 'probability'  && <ProbabilityTab     language={language} />}
         {activeTab === 'progression' && <ProgressionTab      language={language} />}
         {activeTab === 'leaderboard' && <LeaderboardAdminTab language={language} />}
         {activeTab === 'events'      && <EventsTab           language={language} />}

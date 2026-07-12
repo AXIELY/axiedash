@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback } from 'react';
+import { useState, useMemo, useCallback, useEffect } from 'react';
 import { Play, BarChart3 } from 'lucide-react';
 import { supabase } from '../../../lib/supabase';
 import type { WheelPrize, WheelSettings } from '../../../hooks/useSpinWheelGame';
@@ -39,12 +39,12 @@ export function ProbabilityTab({ language }: Props) {
   const [simCount, setSimCount] = useState(0);
   const [simRunning, setSimRunning] = useState(false);
 
-  useState(() => {
+  useEffect(() => {
     supabase.from('wheel_game_settings').select('*').maybeSingle().then(({ data }) => {
       if (data) setSettings(data as WheelSettings);
       setLoading(false);
     });
-  });
+  }, []);
 
   const prizes = useMemo(() => settings?.prizes ?? [], [settings?.prizes]);
   const totalWeight = useMemo(() => prizes.reduce((s, p) => s + p.weight, 0), [prizes]);

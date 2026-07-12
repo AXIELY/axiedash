@@ -662,7 +662,7 @@ function PrizeListItem({ prize, language, prizeState }: { prize: WheelPrize; lan
 }
 
 // ─── Main component ───────────────────────────────────────────────────────────
-export function SpinWheelGame({ onOpenMyPrizes }: { onOpenMyPrizes?: (caseId?: string) => void } = {}) {
+export function SpinWheelGame({ onOpenMyPrizes, onNavigate }: { onOpenMyPrizes?: (caseId?: string) => void; onNavigate?: (page: string) => void } = {}) {
   const { language } = useLanguage();
   const { user } = useAuth();
   const {
@@ -1410,14 +1410,25 @@ export function SpinWheelGame({ onOpenMyPrizes }: { onOpenMyPrizes?: (caseId?: s
                 <h3 className="font-black text-base" style={{ color: '#f8ecda' }}>
                   {language === 'ar' ? 'الجوائز' : 'Prizes'}
                 </h3>
-                <button
-                  onClick={() => setShowProgressCenter(true)}
-                  className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all hover:brightness-110"
-                  style={{ background: 'rgba(139,92,246,.15)', color: '#a78bfa', border: '1px solid rgba(139,92,246,.25)' }}
-                >
-                  <Crown className="w-3 h-3" />
-                  {language === 'ar' ? 'تقدمي' : 'Progress'}
-                </button>
+                <div className="flex items-center gap-1.5">
+                  {onNavigate && (
+                    <button
+                      onClick={() => onNavigate('wheel-prizes')}
+                      className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all hover:brightness-110"
+                      style={{ background: 'rgba(214,170,98,.12)', color: '#D6AA62', border: '1px solid rgba(214,170,98,.22)' }}
+                    >
+                      {language === 'ar' ? 'كل الجوائز' : 'All'}
+                    </button>
+                  )}
+                  <button
+                    onClick={() => setShowProgressCenter(true)}
+                    className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all hover:brightness-110"
+                    style={{ background: 'rgba(139,92,246,.15)', color: '#a78bfa', border: '1px solid rgba(139,92,246,.25)' }}
+                  >
+                    <Crown className="w-3 h-3" />
+                    {language === 'ar' ? 'تقدمي' : 'Progress'}
+                  </button>
+                </div>
               </div>
               <div className="space-y-2.5 overflow-y-auto max-h-[280px] pe-0.5">
                 {uniquePrizeTypes.filter(p => p.type !== 'miss').map(prize => (

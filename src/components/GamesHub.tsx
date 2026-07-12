@@ -25,9 +25,10 @@ interface GamesHubProps {
   initialTab?: GameTab;
   standalone?: boolean;
   onOpenMyPrizes?: (caseId?: string) => void;
+  onNavigate?: (page: string) => void;
 }
 
-export function GamesHub({ initialTab, standalone, onOpenMyPrizes }: GamesHubProps) {
+export function GamesHub({ initialTab, standalone, onOpenMyPrizes, onNavigate }: GamesHubProps) {
   const { language } = useLanguage();
   const [activeTab, setActiveTab] = useState<GameTab>(initialTab ?? 'coin-rush');
 
@@ -36,7 +37,7 @@ export function GamesHub({ initialTab, standalone, onOpenMyPrizes }: GamesHubPro
     return (
       <div className="flex flex-col min-h-full">
         {activeTab === 'coin-rush' && <CoinRushGame />}
-        {activeTab === 'wheel' && <SpinWheelGame onOpenMyPrizes={onOpenMyPrizes} />}
+        {activeTab === 'wheel' && <SpinWheelGame onOpenMyPrizes={onOpenMyPrizes} onNavigate={onNavigate} />}
       </div>
     );
   }
@@ -85,7 +86,7 @@ export function GamesHub({ initialTab, standalone, onOpenMyPrizes }: GamesHubPro
       {/* Tab content */}
       <div className="flex-1">
         {activeTab === 'coin-rush' && <CoinRushGame />}
-        {activeTab === 'wheel' && <SpinWheelGame onOpenMyPrizes={onOpenMyPrizes} />}
+        {activeTab === 'wheel' && <SpinWheelGame onOpenMyPrizes={onOpenMyPrizes} onNavigate={onNavigate} />}
       </div>
     </div>
   );
