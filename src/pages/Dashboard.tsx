@@ -26,7 +26,8 @@ const PAGE_LABELS: Record<string, { ar: string; en: string }> = {
   profile:      { ar: 'الملف الشخصي', en: 'Profile' },
   collection:   { ar: 'المجموعة', en: 'Collection' },
   shop:         { ar: 'المتجر', en: 'Shop' },
-  games:        { ar: 'الألعاب', en: 'Games' },
+  games:        { ar: 'سباق العملات', en: 'Coin Rush' },
+  wheel:        { ar: 'عجلة أكسي', en: 'AXIE Wheel' },
   missions:     { ar: 'المهام', en: 'Missions' },
   achievements: { ar: 'الإنجازات', en: 'Achievements' },
   leaderboard:  { ar: 'المتصدرون', en: 'Leaderboard' },
@@ -83,7 +84,8 @@ export const Dashboard = () => {
   const renderContent = () => {
     switch (currentPage) {
       case 'dashboard':    return <DashboardHome setCurrentPage={setCurrentPage} />;
-      case 'games':        return <GamesHub onOpenMyPrizes={handleOpenMyPrizes} />;
+      case 'games':        return <GamesHub initialTab="coin-rush" standalone onOpenMyPrizes={handleOpenMyPrizes} />;
+      case 'wheel':        return <GamesHub initialTab="wheel" standalone onOpenMyPrizes={handleOpenMyPrizes} />;
       case 'lucky-card':   return <LuckyCardGame />;
       case 'services':     return <ServicesDashboard onBack={() => setCurrentPage('dashboard')} />;
       case 'leaderboard':  return <EnhancedLeaderboard />;

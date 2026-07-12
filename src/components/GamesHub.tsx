@@ -23,19 +23,28 @@ const tabs: { id: GameTab; labelAr: string; labelEn: string; icon: React.ReactNo
 
 interface GamesHubProps {
   initialTab?: GameTab;
+  standalone?: boolean;
   onOpenMyPrizes?: (caseId?: string) => void;
 }
 
-export function GamesHub({ initialTab, onOpenMyPrizes }: GamesHubProps) {
+export function GamesHub({ initialTab, standalone, onOpenMyPrizes }: GamesHubProps) {
   const { language } = useLanguage();
   const [activeTab, setActiveTab] = useState<GameTab>(initialTab ?? 'coin-rush');
+
+  // When opened as a standalone page (via dedicated sidebar nav), skip the tab switcher
+  if (standalone) {
+    return (
+      <div className="flex flex-col min-h-full">
+        {activeTab === 'coin-rush' && <CoinRushGame />}
+        {activeTab === 'wheel' && <SpinWheelGame onOpenMyPrizes={onOpenMyPrizes} />}
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col min-h-full">
       {/* Tab bar */}
-      <div
-        className="flex-shrink-0 flex items-center gap-1 px-4 sm:px-6 pt-4 pb-0"
-      >
+      <div className="flex-shrink-0 flex items-center gap-1 px-4 sm:px-6 pt-4 pb-0">
         {tabs.map((tab) => {
           const isActive = activeTab === tab.id;
           return (
