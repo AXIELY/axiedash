@@ -2,7 +2,7 @@ import { useState, useRef, useCallback, useEffect } from 'react';
 import { useLanguage } from '../../contexts/LanguageContext';
 import { useAuth } from '../../contexts/AuthContext';
 import { usePaymentSystem, DBPaymentPackage, DBPaymentMethod } from '../../hooks/usePaymentSystem';
-import type { PaymentDestination, MethodType as _MethodType } from '../admin/PaymentMethodEditor';
+import type { PaymentDestination } from '../admin/PaymentMethodEditor';
 import {
   ShoppingBag, AlertCircle, Check, X, Upload, Clock,
   ChevronRight, Info, Loader2, Coins, Gem, Crown, Zap, Flame, Tag,
@@ -61,9 +61,9 @@ export const PaymentShop = () => {
   const [proofPreview,    setProofPreview]     = useState<string | null>(null);
   const [submitting,      setSubmitting]       = useState(false);
   const [successCode,     setSuccessCode]      = useState<string | null>(null);
+  const [successInfo,     setSuccessInfo]      = useState<{ methodName: string; amount: number; totalPoints: number; expiresAt?: string } | null>(null);
   const [errorMsg,        setErrorMsg]         = useState<string | null>(null);
-  // Destination snapshot returned by the server after order creation (for future receipt display)
-  const [_destSnapshot,   setDestSnapshot]     = useState<Partial<PaymentDestination> | null>(null);
+  const [destSnapshot,    setDestSnapshot]     = useState<Partial<PaymentDestination> & { method_type?: string } | null>(null);
 
   // Server-calculated pricing
   const [pricing, setPricing]           = useState<any>(null);
@@ -166,8 +166,13 @@ export const PaymentShop = () => {
     setSubmitting(false);
     if (result.success) {
       setSuccessCode(result.requestCode || '');
-      // Store destination snapshot for display after submission (receipt view)
       if ((result as any).destination) setDestSnapshot((result as any).destination);
+      setSuccessInfo({
+        methodName: ar ? selectedMethod.name_ar : (selectedMethod.name_en || selectedMethod.name_ar),
+        amount: pricing?.final_price ?? selectedPackage.price_lyd,
+        totalPoints: pricing?.total_points ?? selectedPackage.total_points,
+        expiresAt: (result as any).expiresAt,
+      });
       setShowModal(false);
     } else {
       // Map server-side availability errors to friendly messages
@@ -222,22 +227,134 @@ export const PaymentShop = () => {
         </div>
       )}
 
-      {/* Success banner */}
+      {/* Success receipt with destination details */}
       {successCode && (
         <div
-          className="flex items-start gap-3 p-4 rounded-[16px]"
-          style={{ background: 'rgba(63,185,80,0.06)', border: '1px solid rgba(63,185,80,0.18)' }}
+          className="rounded-[24px] overflow-hidden"
+          style={{ background: 'var(--card)', border: '1px solid rgba(63,185,80,0.25)' }}
         >
-          <Check className="w-[18px] h-[18px] mt-0.5 flex-shrink-0" style={{ color: '#3FB950' }} strokeWidth={2} />
-          <div className="flex-1 min-w-0">
-            <p className="text-sm font-bold" style={{ color: '#4ade80' }}>
-              {ar ? 'تم إرسال طلب الشحن بنجاح!' : 'Recharge request submitted!'}
-            </p>
-            <p className="text-xs mt-0.5 font-mono truncate" style={{ color: 'rgba(74,222,128,0.55)' }}>{successCode}</p>
+          <div className="p-5 space-y-4">
+            <div className="flex items-start justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-2xl flex items-center justify-center" style={{ background: 'rgba(63,185,80,0.1)' }}>
+                  <Check className="w-5 h-5" style={{ color: '#3FB950' }} strokeWidth={2.5} />
+                </div>
+                <div>
+                  <p className="text-sm font-bold" style={{ color: '#4ade80' }}>
+                    {ar ? 'تم إرسال طلب الشحن بنجاح!' : 'Recharge request submitted!'}
+                  </p>
+                  <p className="text-xs font-mono mt-0.5" style={{ color: 'var(--text-3)' }}>{successCode}</p>
+                </div>
+              </div>
+              <button onClick={() => { setSuccessCode(null); setSuccessInfo(null); setDestSnapshot(null); }}>
+                <X className="w-4 h-4" style={{ color: 'var(--text-3)' }} strokeWidth={1.5} />
+              </button>
+            </div>
+
+            {successInfo && (
+              <div className="grid grid-cols-3 gap-3">
+                <div className="rounded-[14px] p-3 text-center" style={{ background: 'var(--card-2)' }}>
+                  <p className="text-xs" style={{ color: 'var(--text-3)' }}>{ar ? 'المبلغ' : 'Amount'}</p>
+                  <p className="text-sm font-bold mt-1" style={{ color: 'var(--gold)' }}>{successInfo.amount} LYD</p>
+                </div>
+                <div className="rounded-[14px] p-3 text-center" style={{ background: 'var(--card-2)' }}>
+                  <p className="text-xs" style={{ color: 'var(--text-3)' }}>{ar ? 'النقاط' : 'Points'}</p>
+                  <p className="text-sm font-bold mt-1" style={{ color: 'var(--text-1)' }}>{successInfo.totalPoints.toLocaleString()}</p>
+                </div>
+                <div className="rounded-[14px] p-3 text-center" style={{ background: 'var(--card-2)' }}>
+                  <p className="text-xs" style={{ color: 'var(--text-3)' }}>{ar ? 'طريقة الدفع' : 'Method'}</p>
+                  <p className="text-sm font-bold mt-1" style={{ color: 'var(--text-2)' }}>{successInfo.methodName}</p>
+                </div>
+              </div>
+            )}
+
+            {/* Destination details — where to send money */}
+            {destSnapshot && (
+              <div className="rounded-[14px] p-4 space-y-3" style={{ background: 'rgba(88,166,255,0.05)', border: '1px solid rgba(88,166,255,0.14)' }}>
+                <div className="flex items-center gap-1.5 text-xs font-bold" style={{ color: '#58A6FF' }}>
+                  <Info className="w-3.5 h-3.5" strokeWidth={1.5} />
+                  {ar ? 'بيانات الإرسال' : 'Payment Destination'}
+                </div>
+                <div className="space-y-2 text-xs">
+                  {destSnapshot.label_ar && (
+                    <p className="font-bold text-sm" style={{ color: 'var(--text-1)' }}>{ar ? destSnapshot.label_ar : (destSnapshot.label_en || destSnapshot.label_ar)}</p>
+                  )}
+                  {/* Bank details */}
+                  {destSnapshot.bank_name && (
+                    <div className="flex justify-between">
+                      <span style={{ color: 'var(--text-3)' }}>{ar ? 'البنك' : 'Bank'}</span>
+                      <span className="font-bold" style={{ color: 'var(--text-1)' }}>{destSnapshot.bank_name}</span>
+                    </div>
+                  )}
+                  {destSnapshot.account_holder && (
+                    <div className="flex justify-between">
+                      <span style={{ color: 'var(--text-3)' }}>{ar ? 'صاحب الحساب' : 'Account Holder'}</span>
+                      <span className="font-bold" style={{ color: 'var(--text-1)' }}>{destSnapshot.account_holder}</span>
+                    </div>
+                  )}
+                  {destSnapshot.account_number && (
+                    <div className="flex justify-between">
+                      <span style={{ color: 'var(--text-3)' }}>{ar ? 'رقم الحساب' : 'Account Number'}</span>
+                      <span className="font-bold font-mono" style={{ color: 'var(--gold)' }}>{destSnapshot.account_number}</span>
+                    </div>
+                  )}
+                  {destSnapshot.iban && (
+                    <div className="flex justify-between">
+                      <span style={{ color: 'var(--text-3)' }}>IBAN</span>
+                      <span className="font-bold font-mono text-[11px]" style={{ color: 'var(--gold)' }}>{destSnapshot.iban}</span>
+                    </div>
+                  )}
+                  {destSnapshot.branch_name && (
+                    <div className="flex justify-between">
+                      <span style={{ color: 'var(--text-3)' }}>{ar ? 'الفرع' : 'Branch'}</span>
+                      <span className="font-bold" style={{ color: 'var(--text-1)' }}>{destSnapshot.branch_name}</span>
+                    </div>
+                  )}
+                  {/* Mobile / wallet details */}
+                  {destSnapshot.receiver_phone && (
+                    <div className="flex justify-between">
+                      <span style={{ color: 'var(--text-3)' }}>{ar ? 'رقم الاستقبال' : 'Receiver Phone'}</span>
+                      <span className="font-bold font-mono" style={{ color: 'var(--gold)' }}>{destSnapshot.receiver_phone}</span>
+                    </div>
+                  )}
+                  {destSnapshot.receiver_name && (
+                    <div className="flex justify-between">
+                      <span style={{ color: 'var(--text-3)' }}>{ar ? 'اسم المستلم' : 'Receiver'}</span>
+                      <span className="font-bold" style={{ color: 'var(--text-1)' }}>{destSnapshot.receiver_name}</span>
+                    </div>
+                  )}
+                  {destSnapshot.wallet_phone && (
+                    <div className="flex justify-between">
+                      <span style={{ color: 'var(--text-3)' }}>{ar ? 'رقم المحفظة' : 'Wallet Phone'}</span>
+                      <span className="font-bold font-mono" style={{ color: 'var(--gold)' }}>{destSnapshot.wallet_phone}</span>
+                    </div>
+                  )}
+                  {(destSnapshot as any)?.wallet_provider && (
+                    <div className="flex justify-between">
+                      <span style={{ color: 'var(--text-3)' }}>{ar ? 'مزود المحفظة' : 'Wallet Provider'}</span>
+                      <span className="font-bold" style={{ color: 'var(--text-1)' }}>{(destSnapshot as any).wallet_provider}</span>
+                    </div>
+                  )}
+                  {/* Confirmation instructions */}
+                  {destSnapshot.confirmation_instructions && (
+                    <div className="pt-2 mt-1" style={{ borderTop: '1px solid rgba(88,166,255,0.1)' }}>
+                      <p style={{ color: '#93c5fd' }}>{destSnapshot.confirmation_instructions}</p>
+                    </div>
+                  )}
+                  {destSnapshot.public_notes_ar && (
+                    <p style={{ color: 'var(--text-3)' }}>{ar ? destSnapshot.public_notes_ar : (destSnapshot.public_notes_en || destSnapshot.public_notes_ar)}</p>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {successInfo?.expiresAt && (
+              <div className="flex items-center gap-1.5 text-xs" style={{ color: 'var(--text-3)' }}>
+                <Clock className="w-3.5 h-3.5" strokeWidth={1.5} />
+                {ar ? 'يرجى إتمام الدفع قبل انتهاء صلاحية الطلب' : 'Please complete payment before request expires'}
+              </div>
+            )}
           </div>
-          <button onClick={() => setSuccessCode(null)}>
-            <X className="w-4 h-4" style={{ color: 'var(--text-3)' }} strokeWidth={1.5} />
-          </button>
         </div>
       )}
 

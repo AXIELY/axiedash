@@ -368,7 +368,7 @@ export function PaymentMethodEditor({ method, onClose, onSaved }: Props) {
       setError(err.message.includes('FORBIDDEN') ? 'ليس لديك صلاحية تعديل طرق الدفع' : err.message);
       return;
     }
-    if (!data?.success) {
+    if (!data?.ok) {
       setError(data?.error || 'فشل حفظ طريقة الدفع');
       return;
     }
@@ -427,7 +427,7 @@ export function PaymentMethodEditor({ method, onClose, onSaved }: Props) {
       setError(err.message.includes('FORBIDDEN') ? 'ليس لديك صلاحية تعديل حسابات الاستقبال' : err.message);
       return;
     }
-    if (!data?.success) {
+    if (!data?.ok) {
       setError(data?.error || 'فشل حفظ حساب الاستقبال');
       return;
     }
