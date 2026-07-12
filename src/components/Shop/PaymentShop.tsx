@@ -107,12 +107,12 @@ export const PaymentShop = () => {
 
   const openModal = (pkg: DBPaymentPackage) => {
     setSelectedPackage(pkg);
-    // Pick first available method that matches this package's payment_methods list
+    // Pick first AVAILABLE method that matches this package's payment_methods list
     const availableMethods = methods.filter(
       m => pkg.payment_methods.includes(m.code) &&
            (!m.availability_status || m.availability_status === 'AVAILABLE')
     );
-    setSelectedMethod(availableMethods[0] || methods.find(m => pkg.payment_methods.includes(m.code)) || null);
+    setSelectedMethod(availableMethods[0] || null);
     setSenderPhone('');
     setReferenceNumber('');
     setCouponCode('');
@@ -427,37 +427,58 @@ export const PaymentShop = () => {
               <label className="text-xs font-bold uppercase tracking-wider" style={{ color: 'var(--text-3)' }}>
                 {ar ? 'طريقة الدفع' : 'Payment Method'}
               </label>
-              <div className="grid grid-cols-2 gap-2">
-                {selectedPackage.payment_methods.map(code => {
-                  const m = methods.find(mm => mm.code === code);
-                  if (!m) return null;
-                  const isActive = selectedMethod?.code === code;
-                  const unavailable = m.availability_status && m.availability_status !== 'AVAILABLE';
+              {(() => {
+                const pkgMethodCards = selectedPackage.payment_methods
+                  .map(code => methods.find(mm => mm.code === code))
+                  .filter((m): m is typeof methods[0] => !!m);
+                if (pkgMethodCards.length === 0) {
                   return (
-                    <button
-                      key={code}
-                      onClick={() => { if (!unavailable) setSelectedMethod(m); }}
-                      disabled={!!unavailable}
-                      className="p-3 rounded-[14px] text-start text-xs font-bold transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-                      style={{
-                        background: isActive ? 'rgba(214,180,123,0.09)' : 'var(--card-2)',
-                        border: `1px solid ${isActive ? 'rgba(214,180,123,0.32)' : 'var(--border)'}`,
-                        color: isActive ? 'var(--gold)' : unavailable ? 'var(--text-3)' : 'var(--text-2)',
-                      }}
+                    <div
+                      className="flex flex-col items-center gap-1.5 p-4 rounded-[14px] text-center"
+                      style={{ background: 'rgba(239,68,68,0.07)', border: '1px solid rgba(239,68,68,0.18)' }}
                     >
-                      <div className="flex items-center gap-2 mb-1" style={{ color: isActive ? 'var(--gold)' : 'var(--text-3)' }}>
-                        <MethodIcon type={m.type} />
-                        <span>{ar ? m.name_ar : (m.name_en || m.name_ar)}</span>
-                      </div>
-                      {unavailable && m.availability_status && (
-                        <p className="text-xs text-red-400/70 mt-1">
-                          {AVAILABILITY_MSG[m.availability_status] || 'غير متاح'}
-                        </p>
-                      )}
-                    </button>
+                      <AlertCircle className="w-4 h-4" style={{ color: '#ef4444' }} />
+                      <p className="text-sm font-bold" style={{ color: '#fca5a5' }}>
+                        {ar ? 'لا توجد طريقة دفع متاحة حاليًا' : 'No payment methods available'}
+                      </p>
+                      <p className="text-xs" style={{ color: 'rgba(252,165,165,0.6)' }}>
+                        {ar ? 'راجع الإعدادات أو تواصل مع الدعم' : 'Check settings or contact support'}
+                      </p>
+                    </div>
                   );
-                })}
-              </div>
+                }
+                return (
+                  <div className="grid grid-cols-2 gap-2">
+                    {pkgMethodCards.map(m => {
+                      const isActive = selectedMethod?.code === m.code;
+                      const unavailable = m.availability_status && m.availability_status !== 'AVAILABLE';
+                      return (
+                        <button
+                          key={m.code}
+                          onClick={() => { if (!unavailable) setSelectedMethod(m); }}
+                          disabled={!!unavailable}
+                          className="p-3 rounded-[14px] text-start text-xs font-bold transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                          style={{
+                            background: isActive ? 'rgba(214,180,123,0.09)' : 'var(--card-2)',
+                            border: `1px solid ${isActive ? 'rgba(214,180,123,0.32)' : 'var(--border)'}`,
+                            color: isActive ? 'var(--gold)' : unavailable ? 'var(--text-3)' : 'var(--text-2)',
+                          }}
+                        >
+                          <div className="flex items-center gap-2 mb-1" style={{ color: isActive ? 'var(--gold)' : 'var(--text-3)' }}>
+                            <MethodIcon type={m.type} />
+                            <span>{ar ? m.name_ar : (m.name_en || m.name_ar)}</span>
+                          </div>
+                          {unavailable && m.availability_status && (
+                            <p className="text-xs text-red-400/70 mt-1">
+                              {AVAILABILITY_MSG[m.availability_status] || 'غير متاح'}
+                            </p>
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
+                );
+              })()}
             </div>
 
             {/* Instructions + Destination */}
@@ -703,7 +724,7 @@ export const PaymentShop = () => {
               </button>
               <button
                 onClick={handleSubmit}
-                disabled={submitting || !selectedMethod}
+                disabled={submitting || !selectedMethod || (!!selectedMethod?.availability_status && selectedMethod.availability_status !== 'AVAILABLE')}
                 className="flex-1 py-2.5 px-4 rounded-[14px] font-bold text-sm transition-all disabled:opacity-50 flex items-center justify-center gap-2"
                 style={{ background: 'linear-gradient(135deg, #C6A06A 0%, #D6B47B 100%)', color: '#0a0a0a' }}
               >
