@@ -61,10 +61,10 @@ const STATUS_COLOR: Record<string, string> = {
 
 const BLANK_METHOD = {
   code: '', name_ar: '', name_en: '', type: 'BANK_TRANSFER',
-  instructions_ar: '', description_ar: '',
+  instructions_ar: '', instructions_en: '', description_ar: '',
   min_amount: '', max_amount: '', fixed_fee: 0, percentage_fee: 0,
   proof_required: true, reference_required: false, payer_phone_required: false,
-  max_file_size_mb: 5, request_expiry_minutes: 1440,
+  is_maintenance: false, max_file_size_mb: 5, request_expiry_minutes: 1440,
 };
 
 const BLANK_DEST = {
@@ -632,23 +632,35 @@ function MethodsTab() {
     setSaving(true);
     const payload = {
       code: methodForm.code, name_ar: methodForm.name_ar, name_en: methodForm.name_en,
-      type: methodForm.type, instructions_ar: methodForm.instructions_ar,
+      type: methodForm.type,
+      instructions_ar: methodForm.instructions_ar,
+      instructions_en: methodForm.instructions_en || null,
       description_ar: methodForm.description_ar,
       min_amount: methodForm.min_amount || null, max_amount: methodForm.max_amount || null,
       fixed_fee: +methodForm.fixed_fee, percentage_fee: +methodForm.percentage_fee,
       proof_required: methodForm.proof_required, reference_required: methodForm.reference_required,
       payer_phone_required: methodForm.payer_phone_required,
+      is_maintenance: !!methodForm.is_maintenance,
       max_file_size_mb: +methodForm.max_file_size_mb,
       request_expiry_minutes: +methodForm.request_expiry_minutes,
+      updated_at: new Date().toISOString(),
     };
-    if (editingMethod) {
-      await supabase.from('payment_methods').update(payload).eq('id', editingMethod);
-    } else {
-      await supabase.from('payment_methods').insert({ ...payload, active: true, sort_order: methods.length });
+    try {
+      if (editingMethod) {
+        const { error: dbErr } = await supabase.from('payment_methods').update(payload).eq('id', editingMethod);
+        if (dbErr) throw dbErr;
+      } else {
+        const { error: dbErr } = await supabase.from('payment_methods').insert({ ...payload, active: true, sort_order: methods.length });
+        if (dbErr) throw dbErr;
+      }
+      await load();
+      setShowMethodForm(false); setEditingMethod(null); setMethodForm(BLANK_METHOD);
+      notify(editingMethod ? 'تم تحديث طريقة الدفع' : 'تم إضافة طريقة الدفع');
+    } catch (e: any) {
+      notify(`خطأ: ${e?.message ?? 'فشل الحفظ'}`);
+    } finally {
+      setSaving(false);
     }
-    await load(); setShowMethodForm(false); setEditingMethod(null); setMethodForm(BLANK_METHOD);
-    notify(editingMethod ? 'تم تحديث طريقة الدفع' : 'تم إضافة طريقة الدفع');
-    setSaving(false);
   };
 
   const saveDest = async () => {

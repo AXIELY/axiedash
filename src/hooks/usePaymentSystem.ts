@@ -118,6 +118,19 @@ export const usePaymentSystem = () => {
     loadPackagesAndMethods();
   }, []);
 
+  // Realtime: re-fetch payment methods when admin changes them
+  useEffect(() => {
+    const channel = supabase
+      .channel('payment_methods_sync')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'payment_methods' },
+        () => { loadPackagesAndMethods(); }
+      )
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, []);
+
   // Load user's own requests when authenticated
   useEffect(() => {
     if (user?.id) loadMyRequests();
