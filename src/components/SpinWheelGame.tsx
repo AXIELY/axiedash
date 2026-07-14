@@ -24,6 +24,8 @@ function polar(angleDeg: number, r: number): [number, number] {
 function rarityForPrize(prize: WheelPrize): string {
   if (prize.type === 'grand') return 'jackpot';
   if (prize.is_strong) return 'epic';
+  if (prize.type === 'coins') return 'rare';
+  if (prize.type === 'service') return 'rare';
   if (prize.type === 'points') return 'common';
   if (prize.type === 'miss') return 'common';
   return 'rare';
@@ -397,6 +399,7 @@ export function SpinWheelGame({ onOpenMyPrizes, onNavigate }: { onOpenMyPrizes?:
     clearLastWin,
     lastFulfillmentCase,
     prizeStates,
+    fetchUserGrandPrizeProgress,
   } = useSpinWheelGame();
 
   const [rotation, setRotation] = useState(0);
@@ -409,6 +412,9 @@ export function SpinWheelGame({ onOpenMyPrizes, onNavigate }: { onOpenMyPrizes?:
   const [lockedPrizeId, setLockedPrizeId] = useState<string | null>(null);
   const [unlockFlash, setUnlockFlash] = useState(false);
   const [winningIndex, setWinningIndex] = useState<number | null>(null);
+  const [batchResults, setBatchResults] = useState<Array<{ prizeIndex: number; prize: WheelPrize }> | null>(null);
+  const [spinQuantity, setSpinQuantity] = useState(1);
+  const [userGrandPrizeProgress, setUserGrandPrizeProgress] = useState<Array<Record<string, unknown>>>([]);
 
   const rotationRef = useRef(0);
   const animFrameRef = useRef<number | null>(null);
@@ -432,6 +438,11 @@ export function SpinWheelGame({ onOpenMyPrizes, onNavigate }: { onOpenMyPrizes?:
     const id = setInterval(() => setTickerIdx(prev => (prev + 1) % tickerWinners.length), 4200);
     return () => clearInterval(id);
   }, []);
+
+  // Fetch per-user grand prize progress
+  useEffect(() => {
+    fetchUserGrandPrizeProgress().then(setUserGrandPrizeProgress);
+  }, [fetchUserGrandPrizeProgress, settings.active]);
 
   useEffect(() => { injectStyles(); }, []);
   useEffect(() => { gameStateRef.current = gameState; }, [gameState]);
@@ -504,14 +515,16 @@ export function SpinWheelGame({ onOpenMyPrizes, onNavigate }: { onOpenMyPrizes?:
     });
   }, [settings.prizes.length, applyRotation]);
 
-  const handleSpin = useCallback(async () => {
+  const handleSpin = useCallback(async (quantity = 1) => {
     if (!canSpin || spinning || gameState !== 'ready') return;
     sound.unlock();
     setGameState('spinning');
     setWinningIndex(null);
+    setSpinQuantity(quantity);
+    setBatchResults(null);
     document.getElementById('aw-zone')?.classList.add('aw-spinning');
 
-    const result = await doSpin();
+    const result = await doSpin(quantity);
     if (!result) { setGameState('ready'); document.getElementById('aw-zone')?.classList.remove('aw-spinning'); return; }
 
     const { prizeIndex, prize } = result;
@@ -533,6 +546,16 @@ export function SpinWheelGame({ onOpenMyPrizes, onNavigate }: { onOpenMyPrizes?:
     });
 
     await commitSpin(prize);
+
+    // Store batch results for the winner modal
+    if (result.allResults && result.allResults.length > 1) {
+      setBatchResults(result.allResults);
+    }
+
+    // Refresh per-user grand prize progress if unlocked
+    if (result.allResults && prize.type === 'grand') {
+      fetchUserGrandPrizeProgress().then(setUserGrandPrizeProgress);
+    }
 
     // Highlight winning segment
     setWinningIndex(prizeIndex);
@@ -570,12 +593,13 @@ export function SpinWheelGame({ onOpenMyPrizes, onNavigate }: { onOpenMyPrizes?:
     setShowWinner(true);
     setGameState('result');
     document.getElementById('aw-zone')?.classList.remove('aw-spinning');
-  }, [canSpin, spinning, gameState, doSpin, commitSpin, settings.prizes.length, sound, animateWheelTo, confetti, streak, user?.id]);
+  }, [canSpin, spinning, gameState, doSpin, commitSpin, settings.prizes.length, sound, animateWheelTo, confetti, streak, user?.id, fetchUserGrandPrizeProgress]);
 
   const closeWinner = useCallback(() => {
     setShowWinner(false);
     setWinPrize(null);
     setWinningIndex(null);
+    setBatchResults(null);
     setTimeout(() => { setGameState('ready'); }, 260);
   }, []);
 
@@ -618,9 +642,17 @@ export function SpinWheelGame({ onOpenMyPrizes, onNavigate }: { onOpenMyPrizes?:
   // Grand prize info
   const grandPrize = prizes.find(p => p.type === 'grand');
   const grandState = grandPrize ? prizeStates.find(s => s.prize_id === grandPrize.id) : undefined;
-  const grandLocked = lockedPrizeId !== null;
+
+  // Per-user grand prize progress (server-side, per-user unlock)
+  const userGrandProgress = grandPrize
+    ? userGrandPrizeProgress.find((p: any) => p.prize_id === grandPrize.id)
+    : undefined;
   const grandTarget = grandPrize?.unlock_target_value ?? 30;
-  const grandProgress = grandState?.current_progress ?? 0;
+  const grandProgress = (userGrandProgress as any)?.spin_count ?? grandState?.current_progress ?? 0;
+  // The prize is locked for THIS user if they haven't reached 30 spins yet
+  const grandLocked = grandPrize?.availability_mode === 'LOCKED_BY_GOAL'
+    ? !(userGrandProgress as any)?.is_unlocked
+    : lockedPrizeId !== null;
   const ringLen = 345.6;
   const ringOffset = grandLocked ? ringLen * (1 - Math.min(grandProgress / grandTarget, 1)) : 0;
 
@@ -787,6 +819,9 @@ export function SpinWheelGame({ onOpenMyPrizes, onNavigate }: { onOpenMyPrizes?:
                   <linearGradient id="aw-vip" x1="0" y1="0" x2="1" y2="1">
                     <stop offset="0" stopColor="#43101c" /><stop offset="1" stopColor="#230710" />
                   </linearGradient>
+                  <linearGradient id="aw-coins" x1="0" y1="0" x2="1" y2="1">
+                    <stop offset="0" stopColor="#0a4a44" /><stop offset="1" stopColor="#063a35" />
+                  </linearGradient>
                   <radialGradient id="aw-sheen" cx="50%" cy="50%">
                     <stop offset="0%" stopColor="rgba(255,255,255,0.06)" /><stop offset="100%" stopColor="rgba(255,255,255,0)" />
                   </radialGradient>
@@ -815,10 +850,10 @@ export function SpinWheelGame({ onOpenMyPrizes, onNavigate }: { onOpenMyPrizes?:
                     const mid = a0 + slice / 2;
                     const [tx, ty] = polar(mid, 166);
                     const isGrand = prize.type === 'grand';
-                    const fill = isGrand ? 'url(#aw-jack)' : prize.type === 'miss' ? 'url(#aw-brown)' : i % 2 === 0 ? 'url(#aw-cream)' : 'url(#aw-brown)';
-                    const textColor = isGrand ? '#241705' : prize.type === 'miss' ? '#f8e7b4' : i % 2 === 0 ? '#241705' : '#f8e7b4';
+                    const fill = isGrand ? 'url(#aw-jack)' : prize.type === 'coins' ? 'url(#aw-coins)' : prize.type === 'miss' ? 'url(#aw-brown)' : i % 2 === 0 ? 'url(#aw-cream)' : 'url(#aw-brown)';
+                    const textColor = isGrand ? '#241705' : prize.type === 'coins' ? '#31d8c5' : prize.type === 'miss' ? '#f8e7b4' : i % 2 === 0 ? '#241705' : '#f8e7b4';
                     const label = prize.short_label || (prize.name_ar.length > 6 ? prize.name_ar.slice(0, 6) : prize.name_ar);
-                    const subText = prize.type === 'points' ? 'نقطة' : prize.type === 'miss' ? 'حظ أوفر' : prize.type === 'grand' ? 'الكبرى' : '';
+                    const subText = prize.type === 'points' ? 'نقطة' : prize.type === 'miss' ? 'حظ أوفر' : prize.type === 'grand' ? 'الكبرى' : prize.type === 'coins' ? 'عملات' : 'خدمة';
                     const midNormalized = ((mid % 360) + 360) % 360;
                     const needsFlip = midNormalized > 90 && midNormalized < 270;
                     const isWinner = winningIndex === i;
@@ -926,7 +961,7 @@ export function SpinWheelGame({ onOpenMyPrizes, onNavigate }: { onOpenMyPrizes?:
             </div>
 
             {/* Spin button */}
-            <button onClick={handleSpin} disabled={!canSpin || isBusy}
+            <button onClick={() => handleSpin(1)} disabled={!canSpin || isBusy}
               className="relative mt-5"
               style={{
                 fontFamily: "'Lalezar', cursive", fontSize: 24, color: '#241705',
@@ -960,17 +995,19 @@ export function SpinWheelGame({ onOpenMyPrizes, onNavigate }: { onOpenMyPrizes?:
             <div className="flex gap-2 mt-3.5">
               {[1, 5, 10].map(mult => {
                 const cost = spinCost * mult;
-                const canAfford = userPoints >= cost;
+                const freeUsed = Math.min(mult, effectiveFreeSpins);
+                const actualCost = Math.max(0, cost - freeUsed * spinCost);
+                const canAfford = userPoints >= actualCost || effectiveFreeSpins >= mult;
                 return (
                   <button key={mult} disabled={!canAfford || isBusy}
-                    onClick={() => { for (let i = 0; i < mult; i++) setTimeout(() => handleSpin(), i * 100); }}
+                    onClick={() => handleSpin(mult)}
                     style={{
                       background: '#0c0805', border: '1px solid rgba(214,178,94,.16)', color: canAfford ? '#9c8b6e' : '#5d420c',
                       borderRadius: 10, padding: '7px 14px', fontFamily: "'Tajawal', sans-serif",
                       fontSize: 12, fontWeight: 700, cursor: canAfford && !isBusy ? 'pointer' : 'not-allowed',
                       opacity: canAfford ? 1 : 0.4, transition: '.2s',
                     }}>
-                    سحب ×{mult} — {cost.toLocaleString('en')}
+                    سحب ×{mult}{actualCost > 0 ? ` — ${actualCost.toLocaleString('en')}` : ' (مجاني)'}
                   </button>
                 );
               })}
@@ -1193,13 +1230,40 @@ export function SpinWheelGame({ onOpenMyPrizes, onNavigate }: { onOpenMyPrizes?:
             }}>
               {winPrize.type === 'miss' ? (language === 'ar' ? 'المرة القادمة' : 'Next time') : (language === 'ar' ? winPrize.name_ar : winPrize.name_en)}
             </div>
-            <div style={{ color: '#9c8b6e', fontSize: 14, marginBottom: 20 }}>
+            <div style={{ color: '#9c8b6e', fontSize: 14, marginBottom: batchResults && batchResults.length > 1 ? 8 : 20 }}>
               {winPrize.type === 'miss'
                 ? (language === 'ar' ? 'جرّب مرة ثانية' : 'Try again')
-                : lastFulfillmentCase
-                  ? (language === 'ar' ? 'هذه الجائزة تحتاج إلى تسليم من فريق أكسي' : 'This prize requires manual delivery')
-                  : (language === 'ar' ? 'أُضيفت الجائزة إلى رصيدك فورًا' : 'Prize added to your balance instantly')}
+                : winPrize.type === 'coins'
+                  ? (language === 'ar' ? 'تم فتح محادثة مع الدعم لتسليم العملات' : 'Support chat opened for coin delivery')
+                  : lastFulfillmentCase
+                    ? (language === 'ar' ? 'هذه الجائزة تحتاج إلى تسليم من فريق أكسي' : 'This prize requires manual delivery')
+                    : (language === 'ar' ? 'أُضيفت الجائزة إلى رصيدك فورًا' : 'Prize added to your balance instantly')}
             </div>
+
+            {/* Batch results summary (for ×5 or ×10) */}
+            {batchResults && batchResults.length > 1 && (
+              <div style={{
+                marginBottom: 14, padding: '10px 14px', borderRadius: 12,
+                background: 'rgba(217,171,78,0.07)', border: '1px solid rgba(217,171,78,0.18)',
+                textAlign: 'right',
+              }}>
+                <div style={{ fontSize: 12, color: '#9c8b6e', marginBottom: 8, textAlign: 'center' }}>
+                  {language === 'ar' ? `نتائج ${batchResults.length} لفات:` : `${batchResults.length} spin results:`}
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                  {batchResults.map((r, idx) => (
+                    <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <span style={{ fontSize: 11, color: '#5a4a2a', minWidth: 20, textAlign: 'center' }}>{idx + 1}</span>
+                      <PrizeBadge prize={r.prize} size={24} />
+                      <span style={{ fontSize: 12, color: '#efe6d2', flex: 1 }}>{language === 'ar' ? r.prize.name_ar : r.prize.name_en}</span>
+                      <span style={{ fontSize: 11, color: r.prize.type === 'miss' ? '#5a4a2a' : '#d9ab4e' }}>
+                        {r.prize.type === 'miss' ? (language === 'ar' ? 'حظ أوفر' : 'Miss') : r.prize.value}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
 
             {/* Fulfillment case info */}
             {lastFulfillmentCase && (
@@ -1238,7 +1302,7 @@ export function SpinWheelGame({ onOpenMyPrizes, onNavigate }: { onOpenMyPrizes?:
                 </button>
               </div>
             ) : (
-              <button onClick={() => { closeWinner(); setTimeout(handleSpin, 350); }}
+              <button onClick={() => { closeWinner(); setTimeout(() => handleSpin(spinQuantity), 350); }}
                 style={{
                   fontFamily: "'Tajawal', sans-serif", fontWeight: 800, fontSize: 15, color: '#241705',
                   background: 'linear-gradient(180deg, #fdf0c8, #d9ab4e, #9a7220)',

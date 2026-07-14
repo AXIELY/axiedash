@@ -14,7 +14,7 @@ export interface WheelPrize {
   id: string;
   name_ar: string;
   name_en: string;
-  type: string; // 'points' | 'service' | 'miss' | 'grand'
+  type: string; // 'points' | 'service' | 'miss' | 'grand' | 'coins'
   accent_color: string;
   weight: number;
   value: string;
@@ -47,7 +47,7 @@ export interface WheelPrize {
 }
 
 // Prize types that require manual admin fulfillment
-const MANUAL_FULFILLMENT_TYPES = new Set(['service', 'grand']);
+const MANUAL_FULFILLMENT_TYPES = new Set(['service', 'grand', 'coins']);
 
 // Map prize id → required user fields for delivery
 const PRIZE_REQUIRED_FIELDS: Record<string, string[]> = {
@@ -129,6 +129,9 @@ export function useSpinWheelGame() {
     spinRequestId: string;
     pointsAwarded: number;
     pointsDeducted: number;
+    quantity: number;
+    allResults: Array<{ prizeIndex: number; prize: WheelPrize }>;
+    unlockedGrandPrizeIds: string[];
   } | null>(null);
 
   useEffect(() => {
@@ -212,7 +215,7 @@ export function useSpinWheelGame() {
   };
 
   // ── V2: server-authoritative spin ────────────────────────────────────────────
-  const doSpinV2 = useCallback(async (): Promise<{ prizeIndex: number; prize: WheelPrize } | null> => {
+  const doSpinV2 = useCallback(async (quantity = 1): Promise<{ prizeIndex: number; prize: WheelPrize; allResults?: Array<{ prizeIndex: number; prize: WheelPrize }>; quantity?: number } | null> => {
     if (!user || !settings.active || spinning) return null;
 
     setError(null);
@@ -222,6 +225,7 @@ export function useSpinWheelGame() {
 
     const { data, error: rpcErr } = await supabase.rpc('perform_spin', {
       p_client_request_id: clientRequestId,
+      p_quantity: quantity,
     });
 
     if (rpcErr || !data?.success) {
@@ -239,19 +243,34 @@ export function useSpinWheelGame() {
     }
 
     const result = data as {
-      prize_index: number;
-      prize_id: string;
-      prize_type: string;
-      prize_value: string;
-      prize_name_ar: string;
-      prize_name_en: string;
+      quantity: number;
+      results: Array<{
+        prize_index: number;
+        prize_id: string;
+        prize_type: string;
+        prize_value: string;
+        prize_name_ar: string;
+        prize_name_en: string;
+        points_awarded: number;
+      }>;
       points_awarded: number;
       points_deducted: number;
       spin_request_id: string;
+      unlocked_grand_prize_ids: string[];
     };
 
-    // Find the matching prize object from settings for local display
-    const prize = settings.prizes[result.prize_index] ?? settings.prizes.find(p => p.id === result.prize_id);
+    // Build allResults array from the batch
+    const allResults: Array<{ prizeIndex: number; prize: WheelPrize }> = [];
+    for (const r of result.results || []) {
+      const p = settings.prizes[r.prize_index] ?? settings.prizes.find(p => p.id === r.prize_id);
+      if (p) allResults.push({ prizeIndex: r.prize_index, prize: p });
+    }
+
+    // Use the last prize for the wheel animation landing
+    const lastResult = result.results?.[result.results.length - 1];
+    const prize = lastResult
+      ? (settings.prizes[lastResult.prize_index] ?? settings.prizes.find(p => p.id === lastResult.prize_id))
+      : null;
     if (!prize) {
       setError('حدث خطأ في تحديد الجائزة.');
       setSpinning(false);
@@ -260,18 +279,21 @@ export function useSpinWheelGame() {
 
     // Store server result; commitSpinV2 will apply state after animation
     pendingServerResult.current = {
-      prizeIndex: result.prize_index,
+      prizeIndex: lastResult.prize_index,
       prize,
       spinRequestId: result.spin_request_id,
       pointsAwarded: result.points_awarded,
       pointsDeducted: result.points_deducted,
+      quantity: result.quantity,
+      allResults,
+      unlockedGrandPrizeIds: result.unlocked_grand_prize_ids || [],
     };
 
-    return { prizeIndex: result.prize_index, prize };
+    return { prizeIndex: lastResult.prize_index, prize, allResults, quantity: result.quantity };
   }, [user, settings, spinning]);
 
   // ── V1: legacy client-side spin ──────────────────────────────────────────────
-  const doSpinV1 = useCallback(async (): Promise<{ prizeIndex: number; prize: WheelPrize } | null> => {
+  const doSpinV1 = useCallback(async (_quantity = 1): Promise<{ prizeIndex: number; prize: WheelPrize } | null> => {
     if (!user || !settings.active || spinning) return null;
 
     const freeLeft = Math.max(settings.free_daily_spins - spinsToday, 0);
@@ -304,8 +326,8 @@ export function useSpinWheelGame() {
     return { prizeIndex, prize };
   }, [user, settings, spinning, spinsToday, history]);
 
-  const doSpin = useCallback(async (): Promise<{ prizeIndex: number; prize: WheelPrize } | null> => {
-    return spinV2Enabled ? doSpinV2() : doSpinV1();
+  const doSpin = useCallback(async (quantity = 1): Promise<{ prizeIndex: number; prize: WheelPrize; allResults?: Array<{ prizeIndex: number; prize: WheelPrize }>; quantity?: number } | null> => {
+    return spinV2Enabled ? doSpinV2(quantity) : doSpinV1(quantity);
   }, [spinV2Enabled, doSpinV2, doSpinV1]);
 
   // ── commitSpin: called by wheel component after animation completes ───────────
@@ -315,46 +337,55 @@ export function useSpinWheelGame() {
     try {
       if (spinV2Enabled && pendingServerResult.current) {
         // V2: state already applied server-side; just update local UI state
-        const { prize: confirmedPrize, spinRequestId } = pendingServerResult.current;
+        const { prize: confirmedPrize, spinRequestId, allResults, quantity } = pendingServerResult.current;
         pendingServerResult.current = null;
 
-        setHistory(prev => [confirmedPrize, ...prev].slice(0, 5));
-        setSpinsToday(prev => prev + 1);
+        // Update history with all prizes from the batch
+        const prizesToAdd = allResults?.length ? allResults.map(r => r.prize) : [confirmedPrize];
+        setHistory(prev => [...prizesToAdd.reverse(), ...prev].slice(0, 10));
+        setSpinsToday(prev => prev + (quantity || 1));
         if (confirmedPrize.type !== 'miss') setLastWin(confirmedPrize);
 
-        // Create fulfillment case for manual delivery prizes
-        if (MANUAL_FULFILLMENT_TYPES.has(confirmedPrize.type)) {
-          // Look up the reward_grant created by perform_spin
-          const { data: grant } = await supabase
-            .from('reward_grants')
-            .select('id')
-            .eq('spin_request_id', spinRequestId)
-            .eq('user_id', user.id)
-            .maybeSingle();
+        // Create fulfillment cases for all manual delivery prizes in the batch
+        const manualPrizes = (allResults?.length ? allResults : [{ prize: confirmedPrize, prizeIndex: 0 }])
+          .map(r => r.prize)
+          .filter(p => MANUAL_FULFILLMENT_TYPES.has(p.type));
 
-          if (grant?.id) {
-            const requiredFields = PRIZE_REQUIRED_FIELDS[confirmedPrize.id] ?? null;
-            const { data: caseResult } = await supabase.rpc('create_fulfillment_case', {
-              p_reward_grant_id:  grant.id,
-              p_spin_id:          spinRequestId,
-              p_user_id:          user.id,
-              p_prize_id:         confirmedPrize.id,
-              p_prize_name_ar:    confirmedPrize.name_ar,
-              p_prize_name_en:    confirmedPrize.name_en,
-              p_prize_type:       confirmedPrize.type,
-              p_prize_value:      confirmedPrize.value,
-              p_prize_icon_url:   confirmedPrize.primary_icon_url ?? null,
-              p_prize_accent:     confirmedPrize.accent_color,
-              p_prize_rarity:     confirmedPrize.rarity ?? 'common',
-              p_delivery_minutes: 1440,
-              p_required_fields:  requiredFields,
-            });
-            if (caseResult?.case_id) {
-              setLastFulfillmentCase({
-                caseId: caseResult.case_id,
-                threadId: caseResult.thread_id,
-                caseCode: caseResult.case_code ?? '',
+        if (manualPrizes.length > 0) {
+          // Look up all reward_grants created by perform_spin for this request
+          const { data: grants } = await supabase
+            .from('reward_grants')
+            .select('id, grant_type')
+            .eq('spin_request_id', spinRequestId)
+            .eq('user_id', user.id);
+
+          if (grants && grants.length > 0) {
+            // Create a fulfillment case for each grant
+            for (const grant of grants) {
+              const matchingPrize = manualPrizes.find(p => p.type === grant.grant_type) || manualPrizes[0];
+              const requiredFields = PRIZE_REQUIRED_FIELDS[matchingPrize.id] ?? null;
+              const { data: caseResult } = await supabase.rpc('create_fulfillment_case', {
+                p_reward_grant_id:  grant.id,
+                p_spin_id:          spinRequestId,
+                p_user_id:          user.id,
+                p_prize_id:         matchingPrize.id,
+                p_prize_name_ar:    matchingPrize.name_ar,
+                p_prize_name_en:    matchingPrize.name_en,
+                p_prize_type:       matchingPrize.type,
+                p_prize_value:      matchingPrize.value,
+                p_prize_icon_url:   matchingPrize.primary_icon_url ?? null,
+                p_prize_accent:     matchingPrize.accent_color,
+                p_prize_rarity:     matchingPrize.rarity ?? 'common',
+                p_delivery_minutes: 1440,
+                p_required_fields:  requiredFields,
               });
+              if (caseResult?.case_id) {
+                setLastFulfillmentCase({
+                  caseId: caseResult.case_id,
+                  threadId: caseResult.thread_id,
+                  caseCode: caseResult.case_code ?? '',
+                });
+              }
             }
           }
         }
@@ -402,6 +433,13 @@ export function useSpinWheelGame() {
 
   const clearLastWin = () => { setLastWin(null); setLastFulfillmentCase(null); };
 
+  const fetchUserGrandPrizeProgress = useCallback(async () => {
+    if (!user) return [];
+    const { data, error } = await supabase.rpc('get_user_grand_prize_progress');
+    if (error) { console.error('Error fetching grand prize progress:', error); return []; }
+    return (data as { success: boolean; progress: Array<Record<string, unknown>> })?.progress || [];
+  }, [user]);
+
   const freeSpinsLeft = Math.max(settings.free_daily_spins - spinsToday, 0);
   const canSpin = !spinning && settings.active && (
     freeSpinsLeft > 0 || (user?.points || 0) >= settings.spin_cost_points
@@ -426,5 +464,6 @@ export function useSpinWheelGame() {
     spinV2Enabled,
     prizeStates,
     fetchPrizeStates,
+    fetchUserGrandPrizeProgress,
   };
 }

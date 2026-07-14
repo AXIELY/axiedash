@@ -42,7 +42,7 @@ const SECTION_TITLE: React.CSSProperties = {
   marginBottom: '12px',
 };
 
-const PRIZE_TYPES = ['points', 'service', 'miss', 'grand'] as const;
+const PRIZE_TYPES = ['points', 'coins', 'service', 'miss', 'grand'] as const;
 const RARITIES = ['common', 'uncommon', 'rare', 'epic', 'legendary'] as const;
 const BG_STYLES = ['none', 'soft_circle', 'soft_medal', 'glow_ring'] as const;
 const SHAPES = ['contain', 'cover', 'rounded', 'circle'] as const;
@@ -52,6 +52,7 @@ const RARITY_COLOR: Record<string, string> = {
 };
 const TYPE_LABEL: Record<string, { ar: string; en: string }> = {
   points:  { ar: 'نقاط',           en: 'Points'   },
+  coins:   { ar: 'عملات',          en: 'Coins'    },
   service: { ar: 'خدمة',           en: 'Service'  },
   miss:    { ar: 'حظ أوفر',        en: 'No Prize' },
   grand:   { ar: 'الجائزة الكبرى', en: 'Grand'    },
@@ -85,6 +86,7 @@ const ALLOWED_MIME = ['image/png', 'image/webp', 'image/jpeg', 'image/gif'];
 function FallbackIcon({ type, color, size }: { type: string; color: string; size: number }) {
   const paths: Record<string, string> = {
     points:  'M16 4l3.09 6.26L26 11.27l-5 4.87 1.18 6.86L16 19.77l-6.18 3.23L11 16.14 6 11.27l6.91-1.01L16 4z',
+    coins:   'M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm.5 14.5h-1V11H9.5V10h3v6.5zm0-8.5h-1V7h1v1z',
     service: 'M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 14.5v-9l6 4.5-6 4.5z',
     miss:    'M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z',
     grand:   'M5 3l3 6.5L12 4l4 5.5 3-6.5 3 14H2L5 3zM2 19h20v2H2z',
@@ -769,6 +771,8 @@ function PrizeEditor({ prize, totalWeight, allPrizes, onSave, onClose, language,
                       ? (isAr ? 'النقاط تُضاف تلقائياً' : 'Points are awarded automatically')
                       : form.type === 'miss'
                       ? (isAr ? 'لا يوجد تسليم لهذا النوع' : 'No delivery for this type')
+                      : form.type === 'coins'
+                      ? (isAr ? 'العملات تُسلَّم عبر محادثة دعم' : 'Coins delivered via support chat')
                       : (isAr ? 'يتم إنشاء طلب تسليم تلقائي عبر نظام الفلفلمنت' : 'A fulfillment case is auto-created for manual delivery')}
                   </p>
                   <p className="text-xs mt-1 text-white/30">
@@ -776,6 +780,8 @@ function PrizeEditor({ prize, totalWeight, allPrizes, onSave, onClose, language,
                       ? (isAr ? 'يتم إضافة القيمة المحددة مباشرة لرصيد المستخدم' : 'The specified value is added directly to user balance')
                       : form.type === 'miss'
                       ? (isAr ? 'جائزة "حظ أوفر" لا تتطلب أي إجراء' : '"Better luck" prize requires no action')
+                      : form.type === 'coins'
+                      ? (isAr ? 'يُفتح شات مباشر مع الدعم لتسليم العملات (تيك توك، فري فاير، إلخ)' : 'A direct support chat opens for coin delivery (TikTok, Free Fire, etc.)')
                       : (isAr ? 'فريق الدعم سيتولى التسليم عبر المحادثة' : 'Support team handles delivery via chat thread')}
                   </p>
                 </div>
@@ -1002,6 +1008,17 @@ export function PrizesTab({ language }: Props) {
         p_entity_type: 'prize', p_entity_id: prize.id,
         p_change_summary: `${idx >= 0 ? 'تعديل' : 'إنشاء'} جائزة: ${prize.name_ar}`,
       }).then(() => {});
+
+      // Notify all users when a grand prize is created or updated
+      if (prize.type === 'grand') {
+        supabase.rpc('notify_grand_prize_update', {
+          p_settings_id: settings.id,
+          p_prize_id: prize.id,
+          p_prize_name_ar: prize.name_ar,
+          p_prize_name_en: prize.name_en,
+          p_unlock_target: prize.unlock_target_value ?? 30,
+        }).then(() => {});
+      }
     }
   };
 
