@@ -45,37 +45,134 @@ const RARITY_COLORS: Record<string, string> = {
   jackpot: '#d9ab4e',
 };
 
-// ─── SVG icon for prize segments ──────────────────────────────────────────────
-function iconSvgHtml(prize: WheelPrize, size = 32): string {
-  const url = prize.primary_icon_url;
-  if (url) {
-    return `<image href="${url}" x="${-size/2}" y="${-size/2}" width="${size}" height="${size}" preserveAspectRatio="xMidYMid meet" clip-path="url(#segIconClip)"/>`;
-  }
-  const c = prize.accent_color || '#d9ab4e';
-  const base = `width="${size}" height="${size}" viewBox="0 0 32 32" fill="none" stroke="${c}" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"`;
-  switch (prize.type) {
-    case 'grand':
-      return `<svg ${base}><path d="M10 6h12v4c0 4.4-2.6 8-6 8s-6-3.6-6-8V6Z"/><path d="M10 8H6c0 4.4 2.4 6.5 5 7M22 8h4c0 4.4-2.4 6.5-5 7"/><path d="M16 18v4M11 26h10M13 22h6v4h-6z"/></svg>`;
-    case 'points':
-      return `<svg ${base}><path d="M16 4 6 9v7c0 6 4.5 9.7 10 12 5.5-2.3 10-6 10-12V9L16 4Z"/><path d="M11 18l3-4 2 3 3-5"/><path d="M10.5 23h11"/></svg>`;
-    case 'miss':
-      return `<svg ${base}><circle cx="9" cy="16" r="2" fill="${c}" stroke="none"/><circle cx="16" cy="16" r="2" fill="${c}" stroke="none"/><circle cx="23" cy="16" r="2" fill="${c}" stroke="none"/></svg>`;
-    default:
-      return `<svg ${base}><path d="M12 7h8l-1.8 3 3 3c0 8.3-3.2 12-8.2 12S5 21.3 5 13l3-3L12 7Z"/><path d="M13 16.2c1.2-1.3 4.8-1.3 6 0"/><circle cx="16" cy="18" r="3.3"/></svg>`;
-  }
+// ─── PrizeBadge: unified circular badge for HTML contexts ─────────────────────
+function PrizeBadge({
+  prize,
+  size = 36,
+  locked = false,
+  glow: glowOverride,
+}: {
+  prize: WheelPrize;
+  size?: number;
+  locked?: boolean;
+  glow?: string;
+}) {
+  const [imgErr, setImgErr] = useState(false);
+  const rarity = rarityForPrize(prize);
+  const glowColor = glowOverride || prize.glow_color || RARITY_COLORS[rarity] || '#d9ab4e';
+  const ringThickness = Math.max(2, size * 0.08);
+  const innerPadding = size * 0.18;
+
+  return (
+    <div
+      style={{
+        width: size,
+        height: size,
+        borderRadius: '50%',
+        position: 'relative',
+        flexShrink: 0,
+        display: 'grid',
+        placeItems: 'center',
+        background: `conic-gradient(from 215deg, #f8e7b4, #d9ab4e, #9a7220, #d9ab4e, #f8e7b4)`,
+        padding: ringThickness,
+        boxShadow: `0 0 10px ${glowColor}55, 0 2px 6px rgba(0,0,0,.4)`,
+      }}
+    >
+      {/* Inner disc */}
+      <div
+        style={{
+          width: '100%',
+          height: '100%',
+          borderRadius: '50%',
+          background: 'radial-gradient(circle at 30% 25%, #33230f, #120b05)',
+          position: 'relative',
+          overflow: 'hidden',
+          display: 'grid',
+          placeItems: 'center',
+          boxShadow: 'inset 0 -2px 4px rgba(0,0,0,.5)',
+        }}
+      >
+        {/* Glass highlight */}
+        <div
+          style={{
+            position: 'absolute',
+            top: '8%',
+            left: '18%',
+            width: '64%',
+            height: '38%',
+            borderRadius: '50%',
+            background: 'rgba(255,255,255,0.13)',
+            pointerEvents: 'none',
+            filter: 'blur(2px)',
+          }}
+        />
+        {/* Content */}
+        {locked ? (
+          <span style={{ fontSize: size * 0.4, lineHeight: 1 }}>🔒</span>
+        ) : prize.primary_icon_url && !imgErr ? (
+          <img
+            src={prize.primary_icon_url}
+            alt=""
+            onError={() => setImgErr(true)}
+            style={{
+              width: `calc(100% - ${innerPadding * 2}px)`,
+              height: `calc(100% - ${innerPadding * 2}px)`,
+              objectFit: 'contain',
+              borderRadius: '50%',
+              filter: 'drop-shadow(0 1px 2px rgba(0,0,0,.5))',
+              transform: `scale(${prize.icon_scale || 1})`,
+            }}
+          />
+        ) : (
+          <span
+            style={{
+              fontFamily: "'Lalezar', cursive",
+              fontSize: size * 0.38,
+              color: glowColor,
+              textShadow: `0 0 8px ${glowColor}88`,
+              lineHeight: 1,
+            }}
+          >
+            {(prize.name_ar || prize.name_en || '?').charAt(0)}
+          </span>
+        )}
+      </div>
+    </div>
+  );
 }
 
-// ─── PrizeIcon for React-rendered components ──────────────────────────────────
-function PrizeIcon({ prize, size = 32 }: { prize: WheelPrize; size?: number }) {
-  const [imgErr, setImgErr] = useState(false);
-  const url = prize.primary_icon_url;
-  if (url && !imgErr) {
-    return (
-      <img src={url} alt="" width={size} height={size} onError={() => setImgErr(true)}
-        style={{ objectFit: 'contain', display: 'block', borderRadius: '50%' }} />
-    );
+// ─── SVG badge for wheel segments ──────────────────────────────────────────────
+function badgeSvgHtml(prize: WheelPrize, size = 28): string {
+  const rarity = rarityForPrize(prize);
+  const glow = prize.glow_color || RARITY_COLORS[rarity] || '#d9ab4e';
+  const scale = prize.icon_scale || 1;
+  const s = size;
+  const ringW = 2.5;
+  const innerR = s / 2 - ringW;
+  const pad = s * 0.18;
+  const imgSize = (innerR - pad) * 2 * scale;
+
+  const innerBg = `<circle r="${innerR}" fill="url(#aw-badge-bg)"/>`;
+  const glassHi = `<ellipse cx="${-innerR * 0.2}" cy="${-innerR * 0.45}" rx="${innerR * 0.55}" ry="${innerR * 0.32}" fill="rgba(255,255,255,0.13)"/>`;
+
+  let content: string;
+  if (prize.primary_icon_url) {
+    content = `<image href="${prize.primary_icon_url}" x="${-imgSize/2}" y="${-imgSize/2}" width="${imgSize}" height="${imgSize}" preserveAspectRatio="xMidYMid meet" clip-path="url(#aw-badgeClip)"/>`;
+  } else {
+    const c = glow;
+    content = `<text y="${s*0.13}" textAnchor="middle" font-family="'Lalezar',cursive" font-size="${s*0.42}" fill="${c}" style="filter:drop-shadow(0 0 4px ${c}88)">${(prize.name_ar || '?').charAt(0)}</text>`;
   }
-  return <span dangerouslySetInnerHTML={{ __html: iconSvgHtml(prize, size) }} />;
+
+  return `
+    <g>
+      <circle r="${s/2}" fill="url(#aw-badgeRing)" stroke="${glow}" stroke-width="0.5" opacity="0.9"/>
+      <circle r="${s/2}" fill="none" stroke="${glow}" stroke-width="0.3" opacity="0.4" style="filter:drop-shadow(0 0 3px ${glow})"/>
+      ${innerBg}
+      ${glassHi}
+      <clipPath id="aw-badgeClip"><circle r="${innerR - pad}"/></clipPath>
+      ${content}
+    </g>
+  `;
 }
 
 // ─── Sound engine ─────────────────────────────────────────────────────────────
@@ -225,7 +322,7 @@ function injectStyles() {
     @keyframes aw-breath { 0%,100% { transform: scale(1); opacity: .85; } 50% { transform: scale(1.07); opacity: 1; } }
     @keyframes aw-blink { 0%,100% { opacity: 1; } 50% { opacity: .22; } }
     @keyframes aw-spin-blink { 0%,100% { opacity: 1; } 50% { opacity: .22; } }
-    @keyframes aw-tick { 50% { transform: translateX(-50%) rotate(13deg); } }
+    @keyframes aw-tick-spring { 0% { transform: translateX(-50%) rotate(0deg); } 30% { transform: translateX(-50%) rotate(14deg); } 60% { transform: translateX(-50%) rotate(-4deg); } 100% { transform: translateX(-50%) rotate(0deg); } }
     @keyframes aw-btn-pulse {
       0%,100% { box-shadow: 0 7px 0 #5d420c, 0 16px 36px rgba(217,171,78,.24); }
       50% { box-shadow: 0 7px 0 #5d420c, 0 16px 54px rgba(217,171,78,.55); }
@@ -242,9 +339,45 @@ function injectStyles() {
     @keyframes aw-open-glow { 0%,100% { opacity: .35; } 50% { opacity: 1; } }
     @keyframes aw-cta-blink { 0%,100% { opacity: 1; } 50% { opacity: .55; } }
     @keyframes aw-flash { 0% { opacity: 0; } 18% { opacity: 1; } 100% { opacity: 0; } }
+    @keyframes aw-float-particle { 0% { transform: translateY(0) translateX(0); opacity: 0; } 15% { opacity: .7; } 85% { opacity: .5; } 100% { transform: translateY(-80px) translateX(12px); opacity: 0; } }
+    @keyframes aw-seg-glow { 0%,100% { filter: brightness(1); } 50% { filter: brightness(1.3) drop-shadow(0 0 6px currentColor); } }
     .aw-spinning .aw-bulb { animation-duration: .26s !important; }
+    .aw-ticking { animation: aw-tick-spring .22s ease-out; }
+    .aw-seg-winner { animation: aw-seg-glow .6s ease-in-out 2; }
   `;
   document.head.appendChild(style);
+}
+
+// ─── Floating particles for wheel card ─────────────────────────────────────────
+function FloatingParticles() {
+  const particles = Array.from({ length: 8 }, (_, i) => ({
+    id: i,
+    left: 8 + Math.random() * 84,
+    top: 15 + Math.random() * 70,
+    delay: Math.random() * 4,
+    duration: 5 + Math.random() * 4,
+    size: 2 + Math.random() * 3,
+  }));
+  return (
+    <>
+      {particles.map(p => (
+        <div
+          key={p.id}
+          style={{
+            position: 'absolute',
+            left: `${p.left}%`,
+            top: `${p.top}%`,
+            width: p.size,
+            height: p.size,
+            borderRadius: '50%',
+            background: 'rgba(217,171,78,0.6)',
+            pointerEvents: 'none',
+            animation: `aw-float-particle ${p.duration}s ease-in-out ${p.delay}s infinite`,
+          }}
+        />
+      ))}
+    </>
+  );
 }
 
 // ─── Main Component ──────────────────────────────────────────────────────────
@@ -275,6 +408,7 @@ export function SpinWheelGame({ onOpenMyPrizes, onNavigate }: { onOpenMyPrizes?:
   const [jackpotValue, setJackpotValue] = useState(5000);
   const [lockedPrizeId, setLockedPrizeId] = useState<string | null>(null);
   const [unlockFlash, setUnlockFlash] = useState(false);
+  const [winningIndex, setWinningIndex] = useState<number | null>(null);
 
   const rotationRef = useRef(0);
   const animFrameRef = useRef<number | null>(null);
@@ -284,6 +418,20 @@ export function SpinWheelGame({ onOpenMyPrizes, onNavigate }: { onOpenMyPrizes?:
   const confetti = useConfetti();
   const { toast, show: showToast } = useToast();
   const countdown = useCountdown();
+
+  // ─── Ticker (must be before early returns) ────────────────────────────────
+  const tickerWinners = [
+    '🎉 «kareem_ly» فاز قبل قليل بـ 500 نقطة',
+    '💎 «sara.tr» حصلت على كرت ليبيانا 5 د.ل',
+    '🏆 «malik99» فاز بعضوية VIP ليوم كامل!',
+    '🎵 «huda_gh» ربحت 100 عملة تيك توك',
+    '⭐ «omar_bz» أضاف 250 نقطة لرصيده الآن',
+  ];
+  const [tickerIdx, setTickerIdx] = useState(0);
+  useEffect(() => {
+    const id = setInterval(() => setTickerIdx(prev => (prev + 1) % tickerWinners.length), 4200);
+    return () => clearInterval(id);
+  }, []);
 
   useEffect(() => { injectStyles(); }, []);
   useEffect(() => { gameStateRef.current = gameState; }, [gameState]);
@@ -360,6 +508,7 @@ export function SpinWheelGame({ onOpenMyPrizes, onNavigate }: { onOpenMyPrizes?:
     if (!canSpin || spinning || gameState !== 'ready') return;
     sound.unlock();
     setGameState('spinning');
+    setWinningIndex(null);
     document.getElementById('aw-zone')?.classList.add('aw-spinning');
 
     const result = await doSpin();
@@ -384,6 +533,9 @@ export function SpinWheelGame({ onOpenMyPrizes, onNavigate }: { onOpenMyPrizes?:
     });
 
     await commitSpin(prize);
+
+    // Highlight winning segment
+    setWinningIndex(prizeIndex);
 
     // Streak logic
     const isWin = prize.type !== 'miss';
@@ -423,25 +575,12 @@ export function SpinWheelGame({ onOpenMyPrizes, onNavigate }: { onOpenMyPrizes?:
   const closeWinner = useCallback(() => {
     setShowWinner(false);
     setWinPrize(null);
+    setWinningIndex(null);
     setTimeout(() => { setGameState('ready'); }, 260);
   }, []);
 
   useEffect(() => {
     return () => { if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current); };
-  }, []);
-
-  // ─── Ticker (must be before early returns) ────────────────────────────────
-  const tickerWinners = [
-    '🎉 «kareem_ly» فاز قبل قليل بـ 500 نقطة',
-    '💎 «sara.tr» حصلت على كرت ليبيانا 5 د.ل',
-    '🏆 «malik99» فاز بعضوية VIP ليوم كامل!',
-    '🎵 «huda_gh» ربحت 100 عملة تيك توك',
-    '⭐ «omar_bz» أضاف 250 نقطة لرصيده الآن',
-  ];
-  const [tickerIdx, setTickerIdx] = useState(0);
-  useEffect(() => {
-    const id = setInterval(() => setTickerIdx(prev => (prev + 1) % tickerWinners.length), 4200);
-    return () => clearInterval(id);
   }, []);
 
   // ─── Loading ────────────────────────────────────────────────────────────────
@@ -557,10 +696,7 @@ export function SpinWheelGame({ onOpenMyPrizes, onNavigate }: { onOpenMyPrizes?:
                   return (
                     <div key={prize.id} className="flex items-center gap-3 p-2.5 rounded-xl transition-all hover:translate-x-1"
                       style={{ background: '#0c0805', border: '1px solid rgba(214,178,94,.16)' }}>
-                      <div className="w-9 h-9 rounded-full flex items-center justify-center shrink-0 text-base"
-                        style={{ background: 'radial-gradient(circle at 30% 25%, #33230f, #150e07)', border: `2px solid ${rColor}` }}>
-                        {isLockedPrize ? '🔒' : <PrizeIcon prize={prize} size={20} />}
-                      </div>
+                      <PrizeBadge prize={prize} size={36} locked={isLockedPrize} glow={rColor} />
                       <div className="flex-1 min-w-0">
                         <div style={{ fontWeight: 700, fontSize: 13.5, color: '#efe6d2' }}>{language === 'ar' ? prize.name_ar : prize.name_en}</div>
                         <div style={{ fontSize: 11, color: '#9c8b6e' }}>{isLockedPrize ? `مقفلة — ${state?.current_progress ?? 0}/${prize.unlock_target_value ?? 30}` : prize.value}</div>
@@ -591,9 +727,18 @@ export function SpinWheelGame({ onOpenMyPrizes, onNavigate }: { onOpenMyPrizes?:
               animation: 'aw-breath 4.2s ease-in-out infinite',
             }} />
 
+            {/* Vignette */}
+            <div style={{
+              position: 'absolute', inset: 0, pointerEvents: 'none', borderRadius: 24,
+              background: 'radial-gradient(circle at 50% 45%, transparent 50%, rgba(0,0,0,.35) 100%)',
+            }} />
+
+            {/* Floating particles */}
+            <FloatingParticles />
+
             {/* Wheel wrap */}
             <div className="relative" style={{ width: 'min(480px, 84vw)', aspectRatio: 1, zIndex: 1 }}>
-              {/* Pointer */}
+              {/* Pointer — metallic with spring bounce */}
               <div className="aw-pointer" style={{
                 position: 'absolute', top: -12, left: '50%', transform: 'translateX(-50%)', zIndex: 6,
                 filter: 'drop-shadow(0 5px 10px rgba(0,0,0,.6))', transformOrigin: '50% 20%',
@@ -601,11 +746,16 @@ export function SpinWheelGame({ onOpenMyPrizes, onNavigate }: { onOpenMyPrizes?:
                 <svg width="48" height="58" viewBox="0 0 52 62">
                   <defs>
                     <linearGradient id="aw-pg" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0" stopColor="#fdf0c8" /><stop offset=".5" stopColor="#d9ab4e" /><stop offset="1" stopColor="#7c5a13" />
+                      <stop offset="0" stopColor="#fdf0c8" /><stop offset=".35" stopColor="#f8e7b4" /><stop offset=".65" stopColor="#d9ab4e" /><stop offset="1" stopColor="#7c5a13" />
+                    </linearGradient>
+                    <linearGradient id="aw-pg-shine" x1="0" y1="0" x2="1" y2="0">
+                      <stop offset="0" stopColor="rgba(255,255,255,0)" /><stop offset=".5" stopColor="rgba(255,255,255,0.4)" /><stop offset="1" stopColor="rgba(255,255,255,0)" />
                     </linearGradient>
                   </defs>
                   <path d="M26 60 L4 16 A26 26 0 0 1 48 16 Z" fill="url(#aw-pg)" stroke="#4a3405" strokeWidth="1.5" />
+                  <path d="M26 58 L10 18 A22 22 0 0 1 42 18 Z" fill="url(#aw-pg-shine)" opacity="0.3" />
                   <circle cx="26" cy="17" r="7" fill="#fff6dd" />
+                  <circle cx="24" cy="15" r="3" fill="rgba(255,255,255,0.6)" />
                 </svg>
               </div>
 
@@ -613,11 +763,17 @@ export function SpinWheelGame({ onOpenMyPrizes, onNavigate }: { onOpenMyPrizes?:
               <svg viewBox="0 0 520 520" style={{ width: '100%', height: '100%', display: 'block', filter: 'drop-shadow(0 20px 36px rgba(0,0,0,.55))' }}>
                 <defs>
                   <radialGradient id="aw-rim" cx="35%" cy="30%">
-                    <stop offset="0%" stopColor="#ffedb5" /><stop offset="45%" stopColor="#cfa04a" />
+                    <stop offset="0%" stopColor="#ffedb5" /><stop offset=".3%" stopColor="#f8e7b4" /><stop offset="45%" stopColor="#cfa04a" />
                     <stop offset="75%" stopColor="#6e4f10" /><stop offset="100%" stopColor="#a8801f" />
+                  </radialGradient>
+                  <radialGradient id="aw-rim-inner" cx="40%" cy="30%">
+                    <stop offset="0%" stopColor="#fdf0c8" /><stop offset="50%" stopColor="#d9ab4e" /><stop offset="100%" stopColor="#9a7220" />
                   </radialGradient>
                   <radialGradient id="aw-hub" cx="40%" cy="32%">
                     <stop offset="0%" stopColor="#3a2a12" /><stop offset="100%" stopColor="#100a05" />
+                  </radialGradient>
+                  <radialGradient id="aw-hub-rim" cx="35%" cy="28%">
+                    <stop offset="0%" stopColor="#fdf0c8" /><stop offset="50%" stopColor="#d9ab4e" /><stop offset="100%" stopColor="#7c5a13" />
                   </radialGradient>
                   <linearGradient id="aw-cream" x1="0" y1="0" x2="1" y2="1">
                     <stop offset="0" stopColor="#f2e3bd" /><stop offset="1" stopColor="#d6ba82" />
@@ -631,10 +787,22 @@ export function SpinWheelGame({ onOpenMyPrizes, onNavigate }: { onOpenMyPrizes?:
                   <linearGradient id="aw-vip" x1="0" y1="0" x2="1" y2="1">
                     <stop offset="0" stopColor="#43101c" /><stop offset="1" stopColor="#230710" />
                   </linearGradient>
-                  <clipPath id="segIconClip"><circle cx="0" cy="0" r="16" /></clipPath>
+                  <radialGradient id="aw-sheen" cx="50%" cy="50%">
+                    <stop offset="0%" stopColor="rgba(255,255,255,0.06)" /><stop offset="100%" stopColor="rgba(255,255,255,0)" />
+                  </radialGradient>
+                  <radialGradient id="aw-badge-bg" cx="30%" cy="25%">
+                    <stop offset="0%" stopColor="#33230f" /><stop offset="100%" stopColor="#120b05" />
+                  </radialGradient>
+                  <linearGradient id="aw-badgeRing" x1="0" y1="0" x2="1" y2="1">
+                    <stop offset="0" stopColor="#f8e7b4" /><stop offset=".5" stopColor="#d9ab4e" /><stop offset="1" stopColor="#9a7220" />
+                  </linearGradient>
                 </defs>
 
-                <circle cx={CX} cy={CY} r="256" fill="url(#aw-rim)" />
+                {/* Outer gold ring (wide) */}
+                <circle cx={CX} cy={CY} r="258" fill="url(#aw-rim)" />
+                {/* Inner gold ring (thin, shiny) */}
+                <circle cx={CX} cy={CY} r="242" fill="none" stroke="url(#aw-rim-inner)" strokeWidth="3" />
+                {/* Dark backdrop */}
                 <circle cx={CX} cy={CY} r="236" fill="#100a05" />
 
                 {/* Rotating segments */}
@@ -651,16 +819,34 @@ export function SpinWheelGame({ onOpenMyPrizes, onNavigate }: { onOpenMyPrizes?:
                     const textColor = isGrand ? '#241705' : prize.type === 'miss' ? '#f8e7b4' : i % 2 === 0 ? '#241705' : '#f8e7b4';
                     const label = prize.short_label || (prize.name_ar.length > 6 ? prize.name_ar.slice(0, 6) : prize.name_ar);
                     const subText = prize.type === 'points' ? 'نقطة' : prize.type === 'miss' ? 'حظ أوفر' : prize.type === 'grand' ? 'الكبرى' : '';
+                    const midNormalized = ((mid % 360) + 360) % 360;
+                    const needsFlip = midNormalized > 90 && midNormalized < 270;
+                    const isWinner = winningIndex === i;
                     return (
-                      <g key={prize.id}>
+                      <g key={prize.id} className={isWinner ? 'aw-seg-winner' : ''}>
+                        {/* Segment fill */}
                         <path d={`M${CX} ${CY} L${x0} ${y0} A${R} ${R} 0 0 1 ${x1} ${y1} Z`}
                           fill={fill} stroke="rgba(217,171,78,.55)" strokeWidth="1.5" />
+                        {/* Sheen overlay */}
+                        <path d={`M${CX} ${CY} L${x0} ${y0} A${R} ${R} 0 0 1 ${x1} ${y1} Z`}
+                          fill="url(#aw-sheen)" />
+                        {/* Segment divider gold line */}
+                        <line x1={CX} y1={CY} x2={x0} y2={y0} stroke="rgba(248,231,180,.4)" strokeWidth="1" />
+                        {/* Metal pin at edge */}
+                        <circle cx={x0} cy={y0} r="3" fill="url(#aw-badgeRing)" stroke="rgba(0,0,0,.3)" strokeWidth="0.5" />
+
+                        {/* Content group */}
                         <g transform={`translate(${tx},${ty}) rotate(${mid})`}>
-                          <g transform="translate(0,-22)" dangerouslySetInnerHTML={{ __html: iconSvgHtml(prize, 28) }} />
-                          <text y="13" textAnchor="middle" fontFamily="'Lalezar', cursive"
-                            fontSize={label.length > 4 ? 17 : 24} fill={textColor}>{label}</text>
-                          {subText && <text y="32" textAnchor="middle" fontFamily="'Tajawal', sans-serif"
-                            fontWeight="700" fontSize="11.5" fill={textColor} opacity=".8">{subText}</text>}
+                          <g transform={needsFlip ? 'rotate(180)' : ''}>
+                            {/* Badge */}
+                            <g transform="translate(0,-22)" dangerouslySetInnerHTML={{ __html: badgeSvgHtml(prize, 28) }} />
+                            {/* Label */}
+                            <text y={needsFlip ? -8 : 13} textAnchor="middle" fontFamily="'Lalezar', cursive"
+                              fontSize={label.length > 4 ? 17 : 24} fill={textColor}>{label}</text>
+                            {/* Subtext */}
+                            {subText && <text y={needsFlip ? -27 : 32} textAnchor="middle" fontFamily="'Tajawal', sans-serif"
+                              fontWeight="700" fontSize="11.5" fill={textColor} opacity=".8">{subText}</text>}
+                          </g>
                         </g>
                       </g>
                     );
@@ -676,9 +862,9 @@ export function SpinWheelGame({ onOpenMyPrizes, onNavigate }: { onOpenMyPrizes?:
                     const [x1, y1] = polar(a1, R);
                     const [lx, ly] = polar(mid, 168);
                     const [cA1x, cA1y] = polar(a0 + 6, 225);
-                    const [cA2x, cA2y] = polar(a1 - 6, 110);
+                    const [cA2x, cA2y] = polar(a0 + 6, 110);
                     const [cB1x, cB1y] = polar(a1 - 6, 225);
-                    const [cB2x, cB2y] = polar(a0 + 6, 110);
+                    const [cB2x, cB2y] = polar(a1 - 6, 110);
                     return (
                       <g id="aw-lockGroup" style={{ transition: 'opacity .6s, transform .6s', transformOrigin: 'center' }}>
                         <path d={`M${CX} ${CY} L${x0} ${y0} A${R} ${R} 0 0 1 ${x1} ${y1} Z`} fill="rgba(10,6,3,.62)" />
@@ -713,19 +899,28 @@ export function SpinWheelGame({ onOpenMyPrizes, onNavigate }: { onOpenMyPrizes?:
                   })()}
                 </g>
 
-                {/* Bulbs */}
+                {/* Bulbs between rings */}
                 <g>
                   {Array.from({ length: 24 }, (_, i) => {
-                    const [bx, by] = polar(i * 15, 246);
-                    return <circle key={i} cx={bx} cy={by} r="5" fill="#fdf0c8"
-                      className="aw-bulb" style={{ filter: 'drop-shadow(0 0 6px #d9ab4e)', animation: `aw-blink 1.15s infinite${i % 2 ? ' .57s' : ''}` }} />;
+                    const [bx, by] = polar(i * 15, 250);
+                    return (
+                      <g key={i}>
+                        <circle cx={bx} cy={by} r="5" fill="#fdf0c8"
+                          className="aw-bulb" style={{ filter: 'drop-shadow(0 0 6px #d9ab4e)', animation: `aw-blink 1.15s infinite${i % 2 ? ' .57s' : ''}` }} />
+                        <circle cx={bx} cy={by} r="2" fill="rgba(255,255,255,0.7)" />
+                      </g>
+                    );
                   })}
                 </g>
 
-                {/* Center hub */}
-                <circle cx={CX} cy={CY} r="84" fill="url(#aw-rim)" />
-                <circle cx={CX} cy={CY} r="74" fill="url(#aw-hub)" stroke="rgba(217,171,78,.5)" strokeWidth="1.5" />
-                <text x={CX} y="252" textAnchor="middle" fontFamily="'Lalezar', cursive" fontSize="32" fill="#f8e7b4">AXIE</text>
+                {/* Center hub — dual gold rim + metallic disc */}
+                <circle cx={CX} cy={CY} r="88" fill="url(#aw-hub-rim)" />
+                <circle cx={CX} cy={CY} r="80" fill="url(#aw-hub)" stroke="rgba(217,171,78,.5)" strokeWidth="1.5" />
+                <circle cx={CX} cy={CY} r="72" fill="none" stroke="rgba(217,171,78,.3)" strokeWidth="1" />
+                {/* Hub inner shadow */}
+                <circle cx={CX} cy={CY} r="72" fill="none" stroke="rgba(0,0,0,.3)" strokeWidth="2" style={{ transform: 'translate(0,2px)', transformOrigin: 'center' }} />
+                <text x={CX} y="252" textAnchor="middle" fontFamily="'Lalezar', cursive" fontSize="32" fill="#f8e7b4"
+                  style={{ filter: 'drop-shadow(0 0 6px rgba(217,171,78,.4))' }}>AXIE</text>
                 <text x={CX} y="278" textAnchor="middle" fontFamily="'Tajawal', sans-serif" fontWeight="700" fontSize="13" fill="#9c8b6e">Lucky Spin</text>
               </svg>
             </div>
@@ -940,9 +1135,7 @@ export function SpinWheelGame({ onOpenMyPrizes, onNavigate }: { onOpenMyPrizes?:
                 const isLockedPrize = prize.availability_mode === 'LOCKED_BY_GOAL' && state && !state.is_unlocked;
                 return (
                   <div key={prize.id} className="flex items-center gap-3 p-2.5 rounded-xl" style={{ background: '#0c0805', border: '1px solid rgba(214,178,94,.16)' }}>
-                    <div className="w-9 h-9 rounded-full flex items-center justify-center shrink-0" style={{ background: 'radial-gradient(circle at 30% 25%, #33230f, #150e07)', border: `2px solid ${rColor}` }}>
-                      {isLockedPrize ? '🔒' : <PrizeIcon prize={prize} size={20} />}
-                    </div>
+                    <PrizeBadge prize={prize} size={36} locked={isLockedPrize} glow={rColor} />
                     <div className="flex-1 min-w-0">
                       <div style={{ fontWeight: 700, fontSize: 13.5, color: '#efe6d2' }}>{language === 'ar' ? prize.name_ar : prize.name_en}</div>
                       <div style={{ fontSize: 11, color: '#9c8b6e' }}>{isLockedPrize ? `مقفلة — ${state?.current_progress ?? 0}/${prize.unlock_target_value ?? 30}` : prize.value}</div>
@@ -986,8 +1179,9 @@ export function SpinWheelGame({ onOpenMyPrizes, onNavigate }: { onOpenMyPrizes?:
               background: 'repeating-conic-gradient(from 0deg, transparent 0 12deg, rgba(217,171,78,.10) 12deg 20deg)',
               animation: 'aw-rays 15s linear infinite',
             }} />
-            <div style={{ fontSize: 52, animation: 'aw-bob 1.6s ease-in-out infinite' }}>
-              {winPrize.type === 'miss' ? '😔' : winPrize.type === 'grand' ? '💎' : '🎉'}
+            {/* Prize badge in winner modal */}
+            <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 8 }}>
+              <PrizeBadge prize={winPrize} size={72} glow={winPrize.glow_color || RARITY_COLORS[rarityForPrize(winPrize)]} />
             </div>
             <div style={{ fontFamily: "'Lalezar', cursive", fontSize: 30, color: '#f8e7b4', marginTop: 6 }}>
               {winPrize.type === 'miss' ? (language === 'ar' ? 'حظ أوفر' : 'Better Luck') : (language === 'ar' ? 'مبروووك!' : 'Congratulations!')}
@@ -1068,9 +1262,8 @@ export function SpinWheelGame({ onOpenMyPrizes, onNavigate }: { onOpenMyPrizes?:
             <button onClick={clearLastWin} className="absolute top-4 end-4 w-9 h-9 flex items-center justify-center rounded-xl" style={{ color: '#d7b991' }}>
               <X className="w-4 h-4" />
             </button>
-            <div className="w-24 h-24 rounded-full mx-auto flex items-center justify-center mb-5"
-              style={{ background: `radial-gradient(circle, ${lastWin.accent_color}22, transparent 70%)`, border: `2px solid ${lastWin.accent_color}55` }}>
-              <PrizeIcon prize={lastWin} size={48} />
+            <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 16 }}>
+              <PrizeBadge prize={lastWin} size={80} glow={lastWin.glow_color || lastWin.accent_color} />
             </div>
             <h2 className="text-2xl font-bold mb-1" style={{ color: '#f9ead4', fontFamily: "'Tajawal', sans-serif" }}>
               {language === 'ar' ? lastWin.name_ar : lastWin.name_en}
