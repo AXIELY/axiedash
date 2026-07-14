@@ -360,16 +360,30 @@ function injectStyles() {
     .aw-winner-text-in { animation: aw-winner-fade-in .4s ease forwards; }
     .aw-pill-flash { animation: aw-pill-pulse .8s ease-out 1; }
     @media (max-width: 767px) {
-      .aw-mobile-wheel-zone { padding: 20px 14px 18px !important; border-radius: 18px !important; }
+      .aw-mobile-wheel-zone { padding: 14px 10px 16px !important; border-radius: 16px !important; }
       .aw-mobile-wheel-zone .aw-halo-mobile { display: none !important; }
       .aw-mobile-wheel-zone .aw-particles-mobile { display: none !important; }
       .aw-mobile-wheel-zone .aw-bulb { animation-duration: 1.5s !important; }
-      .aw-spin-btn { width: calc(100% - 8px) !important; minWidth: 0 !important; minHeight: 54px !important; fontSize: 22px !important; }
+      .aw-mobile-wheel-zone .aw-vignette-mobile { display: none !important; }
+      .aw-spin-btn { width: 100% !important; min-width: 0 !important; min-height: 54px !important; font-size: 22px !important; }
       .aw-multispin-row { width: 100% !important; }
-      .aw-multispin-row button { flex: 1 1 0 !important; minHeight: 44px !important; fontSize: 11.5px !important; padding: '8px 6px' !important; }
-      .aw-winner-modal { padding: 28px 20px !important; borderRadius: 18px !important; maxWidth: calc(100vw - 40px) !important; }
+      .aw-multispin-row button { flex: 1 1 0 !important; min-height: 44px !important; font-size: 11.5px !important; padding: 8px 6px !important; }
+      .aw-winner-modal { padding: 28px 20px !important; border-radius: 18px !important; max-width: calc(100vw - 40px) !important; }
       .aw-winner-modal img { max-width: 110px !important; }
-      .aw-toast { bottom: 100px !important; maxWidth: calc(100vw - 32px) !important; }
+      .aw-toast { bottom: 100px !important; max-width: calc(100vw - 32px) !important; }
+      .aw-wheel-grid { grid-template-columns: 1fr !important; max-width: 100% !important; gap: 0 !important; margin: 14px auto 0 !important; }
+      .aw-wheel-wrap-mobile { width: min(92vw, 400px) !important; max-width: 100% !important; }
+      .aw-header-mobile h1 { font-size: 38px !important; }
+      .aw-header-mobile { margin-bottom: 12px !important; }
+    }
+    @media (max-width: 390px) {
+      .aw-wheel-wrap-mobile { width: min(90vw, 340px) !important; }
+      .aw-mobile-wheel-zone { padding: 12px 8px 14px !important; }
+    }
+    @media (max-width: 360px) {
+      .aw-wheel-wrap-mobile { width: calc(100vw - 48px) !important; }
+      .aw-mobile-wheel-zone { padding: 10px 6px 12px !important; }
+      .aw-header-mobile h1 { font-size: 32px !important; }
     }
   `;
   document.head.appendChild(style);
@@ -807,7 +821,7 @@ export function SpinWheelGame({ onOpenMyPrizes, onNavigate }: { onOpenMyPrizes?:
 
       <div className="relative z-10 mx-auto max-w-[1180px] px-3 sm:px-4 py-5 sm:py-8">
         {/* Header */}
-        <div className="text-center mb-5">
+        <div className="text-center mb-5 aw-header-mobile">
           <h1 style={{
             fontFamily: "'Lalezar', cursive",
             fontSize: 'clamp(40px, 4.6vw, 60px)',
@@ -831,7 +845,7 @@ export function SpinWheelGame({ onOpenMyPrizes, onNavigate }: { onOpenMyPrizes?:
         </div>
 
         {/* 3-column grid (desktop) / stacked (mobile) */}
-        <div className="grid gap-5" style={{
+        <div className="grid gap-5 aw-wheel-grid" style={{
           gridTemplateColumns: n > 0 ? '250px minmax(480px,1fr) 250px' : '1fr',
           maxWidth: 1180, margin: '22px auto 0',
         }}>
@@ -897,7 +911,7 @@ export function SpinWheelGame({ onOpenMyPrizes, onNavigate }: { onOpenMyPrizes?:
             }} />
 
             {/* Vignette */}
-            <div style={{
+            <div className="aw-vignette-mobile" style={{
               position: 'absolute', inset: 0, pointerEvents: 'none', borderRadius: 24,
               background: 'radial-gradient(circle at 50% 45%, transparent 50%, rgba(0,0,0,.35) 100%)',
             }} />
@@ -906,7 +920,7 @@ export function SpinWheelGame({ onOpenMyPrizes, onNavigate }: { onOpenMyPrizes?:
             <FloatingParticles />
 
             {/* Wheel wrap */}
-            <div className="relative" style={{ width: 'min(480px, 84vw)', maxWidth: 'min(92vw, 420px)', aspectRatio: 1, zIndex: 1 }}>
+            <div className="relative aw-wheel-wrap-mobile" style={{ width: 'min(480px, 84vw)', maxWidth: 'min(92vw, 420px)', aspectRatio: 1, zIndex: 1 }}>
               {/* Pointer — metallic with spring bounce */}
               <div className="aw-pointer" style={{
                 position: 'absolute', top: -12, left: '50%', transform: 'translateX(-50%)', zIndex: 6,
