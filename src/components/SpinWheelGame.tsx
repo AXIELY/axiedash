@@ -442,8 +442,23 @@ function timeAgoAr(isoDate: string): string {
   return `قبل ${h} ساعة`;
 }
 
+const DUMMY_WINNERS: WinnerEvent[] = [
+  { id: 'd1', masked_username: 'محمد ر***', prize_type: 'coins', prize_name_ar: '1000 عملة تيك توك', prize_name_en: '1000 TikTok coins', prize_value: '1000', points_awarded: 0, avatar_seed: 'moh1', created_at: new Date(Date.now() - 3 * 60000).toISOString() },
+  { id: 'd2', masked_username: 'سارة ع***', prize_type: 'points', prize_name_ar: '500 نقطة', prize_name_en: '500 points', prize_value: '500', points_awarded: 500, avatar_seed: 'sara2', created_at: new Date(Date.now() - 7 * 60000).toISOString() },
+  { id: 'd3', masked_username: 'أحمد م***', prize_type: 'service', prize_name_ar: 'كرت ليبيانا 5 د.ل', prize_name_en: 'Libyana 5 LYD', prize_value: '5', points_awarded: 0, avatar_seed: 'ahm3', created_at: new Date(Date.now() - 11 * 60000).toISOString() },
+  { id: 'd4', masked_username: 'فاطمة خ***', prize_type: 'coins', prize_name_ar: '500 عملة تيك توك', prize_name_en: '500 TikTok coins', prize_value: '500', points_awarded: 0, avatar_seed: 'fat4', created_at: new Date(Date.now() - 18 * 60000).toISOString() },
+  { id: 'd5', masked_username: 'عمر ب***', prize_type: 'points', prize_name_ar: '250 نقطة', prize_name_en: '250 points', prize_value: '250', points_awarded: 250, avatar_seed: 'omar5', created_at: new Date(Date.now() - 24 * 60000).toISOString() },
+  { id: 'd6', masked_username: 'نور ط***', prize_type: 'grand', prize_name_ar: 'عضوية VIP أسبوع', prize_name_en: 'VIP Week', prize_value: 'vip', points_awarded: 0, avatar_seed: 'nour6', created_at: new Date(Date.now() - 31 * 60000).toISOString() },
+  { id: 'd7', masked_username: 'خالد س***', prize_type: 'coins', prize_name_ar: '2000 عملة تيك توك', prize_name_en: '2000 TikTok coins', prize_value: '2000', points_awarded: 0, avatar_seed: 'khal7', created_at: new Date(Date.now() - 38 * 60000).toISOString() },
+  { id: 'd8', masked_username: 'ريم ح***', prize_type: 'service', prize_name_ar: 'كرت ليبيانا 10 د.ل', prize_name_en: 'Libyana 10 LYD', prize_value: '10', points_awarded: 0, avatar_seed: 'reem8', created_at: new Date(Date.now() - 44 * 60000).toISOString() },
+  { id: 'd9', masked_username: 'يوسف غ***', prize_type: 'points', prize_name_ar: '1000 نقطة', prize_name_en: '1000 points', prize_value: '1000', points_awarded: 1000, avatar_seed: 'yous9', created_at: new Date(Date.now() - 52 * 60000).toISOString() },
+  { id: 'd10', masked_username: 'منى ص***', prize_type: 'coins', prize_name_ar: '300 عملة تيك توك', prize_name_en: '300 TikTok coins', prize_value: '300', points_awarded: 0, avatar_seed: 'mona10', created_at: new Date(Date.now() - 61 * 60000).toISOString() },
+  { id: 'd11', masked_username: 'إبراهيم ف***', prize_type: 'service', prize_name_ar: 'شحن مجاني 5GB', prize_name_en: '5GB Free Data', prize_value: '5gb', points_awarded: 0, avatar_seed: 'ibr11', created_at: new Date(Date.now() - 70 * 60000).toISOString() },
+  { id: 'd12', masked_username: 'هدى ق***', prize_type: 'coins', prize_name_ar: '750 عملة تيك توك', prize_name_en: '750 TikTok coins', prize_value: '750', points_awarded: 0, avatar_seed: 'huda12', created_at: new Date(Date.now() - 78 * 60000).toISOString() },
+];
+
 function WinnerPill() {
-  const [winners, setWinners] = useState<WinnerEvent[]>([]);
+  const [realWinners, setRealWinners] = useState<WinnerEvent[]>([]);
   const [idx, setIdx] = useState(0);
   const [fadeState, setFadeState] = useState<'in' | 'out'>('in');
   const [flashKey, setFlashKey] = useState(0);
@@ -457,8 +472,8 @@ function WinnerPill() {
         .order('created_at', { ascending: false })
         .limit(10);
       if (data) {
-        data.forEach(w => seenIds.current.add(w.id));
-        setWinners(data);
+        data.forEach((w: WinnerEvent) => seenIds.current.add(w.id));
+        setRealWinners(data);
       }
     };
     fetchRecent();
@@ -472,7 +487,7 @@ function WinnerPill() {
           const event = payload.new as WinnerEvent;
           if (seenIds.current.has(event.id)) return;
           seenIds.current.add(event.id);
-          setWinners(prev => [event, ...prev].slice(0, 10));
+          setRealWinners(prev => [event, ...prev].slice(0, 10));
           setFlashKey(k => k + 1);
         }
       )
@@ -480,6 +495,12 @@ function WinnerPill() {
 
     return () => { supabase.removeChannel(channel); };
   }, []);
+
+  // Merge real winners first, then fill with dummy winners (no duplicates by id)
+  const winners: WinnerEvent[] = [
+    ...realWinners,
+    ...DUMMY_WINNERS.filter(d => !realWinners.find(r => r.id === d.id)),
+  ].slice(0, 15);
 
   useEffect(() => {
     if (winners.length <= 1) return;
@@ -530,11 +551,7 @@ function WinnerPill() {
 
       {/* Text content */}
       <div style={{ flex: 1, minWidth: 0, textAlign: 'right' }}>
-        {isEmpty ? (
-          <span style={{ fontSize: 13.5, color: '#f8e7b4', fontWeight: 700, whiteSpace: 'nowrap' }}>
-            كن أول الفائزين اليوم! 🏆
-          </span>
-        ) : winner ? (
+        {!isEmpty && winner ? (
           <div
             className={fadeState === 'out' ? 'aw-winner-text-out' : 'aw-winner-text-in'}
             style={{ fontSize: 13.5, lineHeight: 1.4, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}
@@ -546,6 +563,7 @@ function WinnerPill() {
             <span style={{ color: '#9c8b6e', fontSize: 11.5, marginRight: 4 }}> {timeAgoAr(winner.created_at)}</span>
           </div>
         ) : null}
+
       </div>
     </div>
   );
