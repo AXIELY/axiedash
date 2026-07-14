@@ -343,9 +343,34 @@ function injectStyles() {
     @keyframes aw-flash { 0% { opacity: 0; } 18% { opacity: 1; } 100% { opacity: 0; } }
     @keyframes aw-float-particle { 0% { transform: translateY(0) translateX(0); opacity: 0; } 15% { opacity: .7; } 85% { opacity: .5; } 100% { transform: translateY(-80px) translateX(12px); opacity: 0; } }
     @keyframes aw-seg-glow { 0%,100% { filter: brightness(1); } 50% { filter: brightness(1.3) drop-shadow(0 0 6px currentColor); } }
+    @keyframes aw-pill-shine { 0% { transform: translateX(-150%) skewX(-15deg); } 60%,100% { transform: translateX(250%) skewX(-15deg); } }
+    @keyframes aw-pill-pulse { 0% { box-shadow: 0 0 24px rgba(217,171,78,.25), 0 0 0 0 rgba(248,231,180,.6); } 40% { box-shadow: 0 0 24px rgba(217,171,78,.25), 0 0 0 6px rgba(248,231,180,.3); } 100% { box-shadow: 0 0 24px rgba(217,171,78,.25), 0 0 0 0 rgba(248,231,180,0); } }
+    @keyframes aw-winner-fade-out { to { opacity: 0; transform: translateY(-10px); } }
+    @keyframes aw-winner-fade-in { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+    @keyframes aw-live-dot { 0%,100% { opacity: 1; transform: scale(1); } 50% { opacity: .4; transform: scale(.7); } }
     .aw-spinning .aw-bulb { animation-duration: .26s !important; }
     .aw-ticking { animation: aw-tick-spring .22s ease-out; }
     .aw-seg-winner { animation: aw-seg-glow .6s ease-in-out 2; }
+    .aw-pill-shine-layer::after {
+      content: ''; position: absolute; top: 0; left: -150%; width: 60%; height: 100%;
+      background: linear-gradient(100deg, transparent, rgba(255,255,255,0.08), transparent);
+      animation: aw-pill-shine 4s ease-in-out infinite; pointer-events: none;
+    }
+    .aw-winner-text-out { animation: aw-winner-fade-out .4s ease forwards; }
+    .aw-winner-text-in { animation: aw-winner-fade-in .4s ease forwards; }
+    .aw-pill-flash { animation: aw-pill-pulse .8s ease-out 1; }
+    @media (max-width: 767px) {
+      .aw-mobile-wheel-zone { padding: 20px 14px 18px !important; border-radius: 18px !important; }
+      .aw-mobile-wheel-zone .aw-halo-mobile { display: none !important; }
+      .aw-mobile-wheel-zone .aw-particles-mobile { display: none !important; }
+      .aw-mobile-wheel-zone .aw-bulb { animation-duration: 1.5s !important; }
+      .aw-spin-btn { width: calc(100% - 8px) !important; minWidth: 0 !important; minHeight: 54px !important; fontSize: 22px !important; }
+      .aw-multispin-row { width: 100% !important; }
+      .aw-multispin-row button { flex: 1 1 0 !important; minHeight: 44px !important; fontSize: 11.5px !important; padding: '8px 6px' !important; }
+      .aw-winner-modal { padding: 28px 20px !important; borderRadius: 18px !important; maxWidth: calc(100vw - 40px) !important; }
+      .aw-winner-modal img { max-width: 110px !important; }
+      .aw-toast { bottom: 100px !important; maxWidth: calc(100vw - 32px) !important; }
+    }
   `;
   document.head.appendChild(style);
 }
@@ -361,7 +386,7 @@ function FloatingParticles() {
     size: 2 + Math.random() * 3,
   }));
   return (
-    <>
+    <div className="aw-particles-mobile" style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }}>
       {particles.map(p => (
         <div
           key={p.id}
@@ -378,7 +403,137 @@ function FloatingParticles() {
           }}
         />
       ))}
-    </>
+    </div>
+  );
+}
+
+// ─── WinnerPill: luxurious gold capsule for latest winners ──────────────────────
+interface WinnerEvent {
+  id: string;
+  masked_username: string;
+  prize_type: string;
+  prize_name_en: string;
+  prize_name_ar: string;
+  prize_value: string;
+  points_awarded: number;
+  avatar_seed: string;
+  created_at: string;
+}
+
+function timeAgoAr(isoDate: string): string {
+  const diff = Math.floor((Date.now() - new Date(isoDate).getTime()) / 1000);
+  if (diff < 60) return 'قبل قليل';
+  if (diff < 3600) { const m = Math.floor(diff / 60); return `قبل ${m} دقيقة`; }
+  const h = Math.floor(diff / 3600);
+  return `قبل ${h} ساعة`;
+}
+
+function WinnerPill() {
+  const [winners, setWinners] = useState<WinnerEvent[]>([]);
+  const [idx, setIdx] = useState(0);
+  const [fadeState, setFadeState] = useState<'in' | 'out'>('in');
+  const [flashKey, setFlashKey] = useState(0);
+  const seenIds = useRef(new Set<string>());
+
+  useEffect(() => {
+    const fetchRecent = async () => {
+      const { data } = await supabase
+        .from('public_winner_events')
+        .select('*')
+        .order('created_at', { ascending: false })
+        .limit(10);
+      if (data) {
+        data.forEach(w => seenIds.current.add(w.id));
+        setWinners(data);
+      }
+    };
+    fetchRecent();
+
+    const channel = supabase
+      .channel('live-winners-pill')
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'public_winner_events' },
+        (payload) => {
+          const event = payload.new as WinnerEvent;
+          if (seenIds.current.has(event.id)) return;
+          seenIds.current.add(event.id);
+          setWinners(prev => [event, ...prev].slice(0, 10));
+          setFlashKey(k => k + 1);
+        }
+      )
+      .subscribe();
+
+    return () => { supabase.removeChannel(channel); };
+  }, []);
+
+  useEffect(() => {
+    if (winners.length <= 1) return;
+    const id = setInterval(() => {
+      setFadeState('out');
+      setTimeout(() => {
+        setIdx(prev => (prev + 1) % winners.length);
+        setFadeState('in');
+      }, 400);
+    }, 4500);
+    return () => clearInterval(id);
+  }, [winners.length]);
+
+  const winner = winners[idx];
+  const isEmpty = winners.length === 0;
+
+  return (
+    <div
+      key={flashKey}
+      className="aw-pill-flash aw-pill-shine-layer"
+      style={{
+        position: 'relative',
+        maxWidth: 620, margin: '0 auto',
+        borderRadius: 999,
+        background: 'linear-gradient(180deg, #241708, #140d06)',
+        border: '1.5px solid',
+        borderImage: 'linear-gradient(135deg, #f8e7b4, #d9ab4e) 1',
+        boxShadow: '0 0 24px rgba(217,171,78,.25)',
+        padding: '10px 22px 10px 18px',
+        display: 'flex', alignItems: 'center', gap: 12,
+        overflow: 'hidden',
+      }}
+    >
+      {/* Gold trophy badge */}
+      <div style={{
+        width: 34, height: 34, borderRadius: '50%', flexShrink: 0,
+        background: 'radial-gradient(circle at 35% 30%, #fdf0c8, #d9ab4e 60%, #9a7220)',
+        display: 'grid', placeItems: 'center', fontSize: 16,
+        boxShadow: '0 0 10px rgba(217,171,78,.4), inset 0 -2px 4px rgba(0,0,0,.3)',
+      }}>🏆</div>
+
+      {/* Live dot */}
+      <div style={{
+        width: 7, height: 7, borderRadius: '50%', flexShrink: 0,
+        background: '#d9ab4e', boxShadow: '0 0 8px #d9ab4e',
+        animation: 'aw-live-dot 1.4s ease-in-out infinite',
+      }} />
+
+      {/* Text content */}
+      <div style={{ flex: 1, minWidth: 0, textAlign: 'right' }}>
+        {isEmpty ? (
+          <span style={{ fontSize: 13.5, color: '#f8e7b4', fontWeight: 700, whiteSpace: 'nowrap' }}>
+            كن أول الفائزين اليوم! 🏆
+          </span>
+        ) : winner ? (
+          <div
+            className={fadeState === 'out' ? 'aw-winner-text-out' : 'aw-winner-text-in'}
+            style={{ fontSize: 13.5, lineHeight: 1.4, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}
+          >
+            <span style={{ color: '#f8e7b4', fontWeight: 800 }}>تهانينا! </span>
+            <span style={{ color: '#d9ab4e', fontWeight: 700 }}>«{winner.masked_username}»</span>
+            <span style={{ color: '#9c8b6e' }}> فاز بـ </span>
+            <span style={{ color: '#efe6d2', fontWeight: 700 }}>{winner.prize_name_ar || winner.prize_value || `+${winner.points_awarded}`}</span>
+            <span style={{ color: '#9c8b6e', fontSize: 11.5, marginRight: 4 }}> {timeAgoAr(winner.created_at)}</span>
+          </div>
+        ) : null}
+      </div>
+    </div>
   );
 }
 
@@ -425,19 +580,7 @@ export function SpinWheelGame({ onOpenMyPrizes, onNavigate }: { onOpenMyPrizes?:
   const { toast, show: showToast } = useToast();
   const countdown = useCountdown();
 
-  // ─── Ticker (must be before early returns) ────────────────────────────────
-  const tickerWinners = [
-    '🎉 «kareem_ly» فاز قبل قليل بـ 500 نقطة',
-    '💎 «sara.tr» حصلت على كرت ليبيانا 5 د.ل',
-    '🏆 «malik99» فاز بعضوية VIP ليوم كامل!',
-    '🎵 «huda_gh» ربحت 100 عملة تيك توك',
-    '⭐ «omar_bz» أضاف 250 نقطة لرصيده الآن',
-  ];
-  const [tickerIdx, setTickerIdx] = useState(0);
-  useEffect(() => {
-    const id = setInterval(() => setTickerIdx(prev => (prev + 1) % tickerWinners.length), 4200);
-    return () => clearInterval(id);
-  }, []);
+  // ─── Ticker removed — replaced by WinnerPill component ─────────────────────
 
   // Fetch per-user grand prize progress
   useEffect(() => {
@@ -683,17 +826,11 @@ export function SpinWheelGame({ onOpenMyPrizes, onNavigate }: { onOpenMyPrizes?:
               ? (language === 'ar' ? <>لديك <b style={{ color: '#d9ab4e' }}>{effectiveFreeSpins}</b> دورات مجانية — أدر العجلة واربح جوائز فورية</> : <>You have <b style={{ color: '#d9ab4e' }}>{effectiveFreeSpins}</b> free spins</>)
               : (language === 'ar' ? <>كل لفة = <b style={{ color: '#d9ab4e' }}>{spinCost}</b> نقطة</> : <>Spin cost: <b style={{ color: '#d9ab4e' }}>{spinCost}</b> pts</>)}
           </div>
-          {/* Ticker */}
-          <div className="max-w-[560px] mx-auto mt-3 flex items-center gap-2.5 justify-center"
-            style={{ background: '#181008', border: '1px solid rgba(214,178,94,.16)', borderRadius: 999, padding: '7px 18px' }}>
-            <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#31d8c5', boxShadow: '0 0 9px #31d8c5', animation: 'aw-pulse 1.4s infinite', flexShrink: 0 }} />
-            <span style={{ fontSize: 13, color: '#b7e9df', whiteSpace: 'nowrap', transition: 'opacity .4s' }}>
-              {tickerWinners[tickerIdx]}
-            </span>
-          </div>
+          {/* Winner pill */}
+          <div className="mt-3"><WinnerPill /></div>
         </div>
 
-        {/* 3-column grid */}
+        {/* 3-column grid (desktop) / stacked (mobile) */}
         <div className="grid gap-5" style={{
           gridTemplateColumns: n > 0 ? '250px minmax(480px,1fr) 250px' : '1fr',
           maxWidth: 1180, margin: '22px auto 0',
@@ -744,7 +881,7 @@ export function SpinWheelGame({ onOpenMyPrizes, onNavigate }: { onOpenMyPrizes?:
           </div>
 
           {/* ── CENTER: Wheel ── */}
-          <div id="aw-zone" className="flex flex-col items-center"
+          <div id="aw-zone" className="aw-mobile-wheel-zone flex flex-col items-center"
             style={{
               position: 'relative', overflow: 'hidden',
               background: 'radial-gradient(55% 42% at 50% 36%, rgba(217,171,78,.09), transparent 70%), #181008',
@@ -753,7 +890,7 @@ export function SpinWheelGame({ onOpenMyPrizes, onNavigate }: { onOpenMyPrizes?:
               boxShadow: '0 24px 60px rgba(0,0,0,.5), inset 0 1px 0 rgba(248,231,180,.07)',
             }}>
             {/* Halo */}
-            <div style={{
+            <div className="aw-halo-mobile" style={{
               position: 'absolute', top: 46, width: 520, height: 520, borderRadius: '50%', pointerEvents: 'none',
               background: 'radial-gradient(circle, rgba(217,171,78,.16) 0%, rgba(217,171,78,.04) 45%, transparent 70%)',
               animation: 'aw-breath 4.2s ease-in-out infinite',
@@ -769,7 +906,7 @@ export function SpinWheelGame({ onOpenMyPrizes, onNavigate }: { onOpenMyPrizes?:
             <FloatingParticles />
 
             {/* Wheel wrap */}
-            <div className="relative" style={{ width: 'min(480px, 84vw)', aspectRatio: 1, zIndex: 1 }}>
+            <div className="relative" style={{ width: 'min(480px, 84vw)', maxWidth: 'min(92vw, 420px)', aspectRatio: 1, zIndex: 1 }}>
               {/* Pointer — metallic with spring bounce */}
               <div className="aw-pointer" style={{
                 position: 'absolute', top: -12, left: '50%', transform: 'translateX(-50%)', zIndex: 6,
@@ -962,7 +1099,7 @@ export function SpinWheelGame({ onOpenMyPrizes, onNavigate }: { onOpenMyPrizes?:
 
             {/* Spin button */}
             <button onClick={() => handleSpin(1)} disabled={!canSpin || isBusy}
-              className="relative mt-5"
+              className="relative mt-5 aw-spin-btn"
               style={{
                 fontFamily: "'Lalezar', cursive", fontSize: 24, color: '#241705',
                 background: isBusy ? 'rgba(217,171,78,.3)' : 'linear-gradient(180deg, #fdf0c8 0%, #d9ab4e 50%, #9a7220 100%)',
@@ -970,7 +1107,7 @@ export function SpinWheelGame({ onOpenMyPrizes, onNavigate }: { onOpenMyPrizes?:
                 boxShadow: isBusy ? 'none' : '0 7px 0 #5d420c, 0 16px 36px rgba(217,171,78,.28)',
                 animation: canSpin && !isBusy ? 'aw-btn-pulse 2.1s ease-in-out infinite' : 'none',
                 opacity: !canSpin || isBusy ? 0.6 : 1,
-                zIndex: 2,
+                zIndex: 2, width: 'auto', minWidth: 280,
               }}>
               {isBusy
                 ? (language === 'ar' ? 'العجلة تدور...' : 'Spinning...')
@@ -992,7 +1129,7 @@ export function SpinWheelGame({ onOpenMyPrizes, onNavigate }: { onOpenMyPrizes?:
             </div>
 
             {/* Multi-spin buttons */}
-            <div className="flex gap-2 mt-3.5">
+            <div className="flex gap-2 mt-3.5 aw-multispin-row">
               {[1, 5, 10].map(mult => {
                 const cost = spinCost * mult;
                 const freeUsed = Math.min(mult, effectiveFreeSpins);
@@ -1160,11 +1297,87 @@ export function SpinWheelGame({ onOpenMyPrizes, onNavigate }: { onOpenMyPrizes?:
           </div>
         </div>
 
-        {/* Mobile: prizes + events */}
+        {/* Mobile: 3 stat cards + jackpot + timer + streak + prizes + leaderboard */}
         <div className="lg:hidden mt-5 space-y-3">
+          {/* 3 stat cards: points | tries | jackpot */}
+          <div className="grid grid-cols-3 gap-2.5">
+            <div className="rounded-xl p-3 text-center" style={{ background: '#181008', border: '1px solid rgba(214,178,94,.16)' }}>
+              <b style={{ fontFamily: "'Lalezar', cursive", fontSize: 22, color: '#f8e7b4', display: 'block', lineHeight: 1.1 }}>
+                {userPoints.toLocaleString('en')}
+              </b>
+              <span style={{ fontSize: 10, color: '#9c8b6e' }}>{language === 'ar' ? 'نقاطك' : 'Points'}</span>
+            </div>
+            <div className="rounded-xl p-3 text-center" style={{ background: '#181008', border: '1px solid rgba(214,178,94,.16)' }}>
+              <b style={{ fontFamily: "'Lalezar', cursive", fontSize: 22, color: '#f8e7b4', display: 'block', lineHeight: 1.1 }}>
+                {effectiveFreeSpins}
+              </b>
+              <span style={{ fontSize: 10, color: '#9c8b6e' }}>{language === 'ar' ? 'محاولاتك' : 'Tries'}</span>
+            </div>
+            <div className="rounded-xl p-3 text-center" style={{ background: '#181008', border: grandLocked ? '1px solid rgba(230,69,92,.35)' : '1px solid rgba(214,178,94,.25)' }}>
+              <b style={{ fontFamily: "'Lalezar', cursive", fontSize: 18, color: grandLocked ? '#ff97a8' : '#f8e7b4', display: 'block', lineHeight: 1.1 }}>
+                {grandLocked ? '🔒' : jackpotValue.toLocaleString('en')}
+              </b>
+              <span style={{ fontSize: 10, color: '#9c8b6e' }}>{language === 'ar' ? 'الكبرى' : 'Jackpot'}</span>
+            </div>
+          </div>
+
+          {/* Timer card (full width) */}
+          <div className="rounded-2xl p-4" style={{ background: '#181008', border: '1px solid rgba(214,178,94,.16)' }}>
+            <h3 style={{ fontFamily: "'Lalezar', cursive", fontSize: 18, color: '#f8e7b4', textAlign: 'center' }}>⏳ {language === 'ar' ? 'تجديد الدورات' : 'Reset'}</h3>
+            <div className="flex justify-center gap-1.5 mt-2.5">
+              {[
+                { v: countdown.h, l: language === 'ar' ? 'ساعة' : 'hr' },
+                { v: countdown.m, l: language === 'ar' ? 'دقيقة' : 'min' },
+                { v: countdown.s, l: language === 'ar' ? 'ثانية' : 'sec' },
+              ].map((t, i) => (
+                <div key={i} className="rounded-lg text-center" style={{ background: '#0c0805', border: '1px solid rgba(214,178,94,.16)', minWidth: 48, padding: '6px 4px' }}>
+                  <b style={{ fontFamily: "'Lalezar', cursive", fontSize: 19, color: '#f8e7b4', display: 'block' }}>
+                    {String(t.v).padStart(2, '0')}
+                  </b>
+                  <span style={{ fontSize: '9.5px', color: '#9c8b6e' }}>{t.l}</span>
+                </div>
+              ))}
+            </div>
+            <p style={{ fontSize: 11, color: '#9c8b6e', textAlign: 'center', marginTop: 6 }}>
+              {language === 'ar' ? 'حتى تجديد دوراتك المجانية' : 'Until free spins reset'}
+            </p>
+          </div>
+
+          {/* Streak card (full width) */}
+          <div className="rounded-2xl p-4" style={{ background: '#181008', border: '1px solid rgba(214,178,94,.16)' }}>
+            <div className="flex justify-between items-center mb-1.5" style={{ fontSize: 12, color: '#9c8b6e' }}>
+              <span>🔥 {language === 'ar' ? 'سلسلة الحظ' : 'Lucky Streak'}</span>
+              <b style={{ color: '#f8e7b4' }}>{streak}%</b>
+            </div>
+            <div style={{ height: 12, borderRadius: 999, background: '#0c0805', border: '1px solid rgba(214,178,94,.16)', overflow: 'hidden' }}>
+              <div style={{
+                height: '100%', width: `${streak}%`, borderRadius: 999,
+                transition: 'width .9s cubic-bezier(.2,.9,.2,1)',
+                background: 'linear-gradient(90deg, #9a7220, #d9ab4e, #f8e7b4)',
+                boxShadow: '0 0 12px rgba(217,171,78,.55)', position: 'relative',
+              }}>
+                <div style={{
+                  position: 'absolute', inset: 0,
+                  background: 'linear-gradient(90deg, transparent 40%, rgba(255,255,255,.45) 50%, transparent 60%)',
+                  backgroundSize: '200% 100%', animation: 'aw-bar-shine 1.8s linear infinite',
+                }} />
+              </div>
+            </div>
+            <p style={{ fontSize: 11, color: '#9c8b6e', textAlign: 'center', marginTop: 6 }}>
+              {language === 'ar' ? 'أكمل 3 دورات واحصل على دورة إضافية مضمونة' : 'Complete 3 spins for a bonus spin'}
+            </p>
+          </div>
+
+          {/* Leaderboard (full width) */}
+          <div className="rounded-2xl p-4" style={{ background: '#181008', border: '1px solid rgba(214,178,94,.16)' }}>
+            <h3 style={{ fontFamily: "'Lalezar', cursive", fontSize: 18, color: '#f8e7b4', marginBottom: 12 }}>🏅 {language === 'ar' ? 'أبطال العجلة' : 'Leaders'}</h3>
+            <WheelLeaderboard compact />
+          </div>
+
+          {/* Prizes (full width) */}
           <div className="rounded-2xl p-4" style={{ background: '#181008', border: '1px solid rgba(214,178,94,.16)' }}>
             <h3 style={{ fontFamily: "'Lalezar', cursive", fontSize: 18, color: '#f8e7b4', marginBottom: 12 }}>🎁 {language === 'ar' ? 'الجوائز المتاحة' : 'Available Prizes'}</h3>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+            <div className="grid grid-cols-1 gap-2.5">
               {prizes.filter(p => p.type !== 'miss').map(prize => {
                 const rarity = rarityForPrize(prize);
                 const rColor = RARITY_COLORS[rarity] || '#d9ab4e';
@@ -1186,9 +1399,6 @@ export function SpinWheelGame({ onOpenMyPrizes, onNavigate }: { onOpenMyPrizes?:
             </div>
           </div>
           <EventStrip />
-          <div className="rounded-2xl p-4" style={{ background: '#181008', border: '1px solid rgba(214,178,94,.16)' }}>
-            <WheelLeaderboard compact />
-          </div>
         </div>
       </div>
 
@@ -1202,6 +1412,7 @@ export function SpinWheelGame({ onOpenMyPrizes, onNavigate }: { onOpenMyPrizes?:
             transition: 'opacity .35s',
           }}>
           <div onClick={e => e.stopPropagation()}
+            className="aw-winner-modal"
             style={{
               textAlign: 'center', padding: '40px 54px', borderRadius: 24, position: 'relative',
               background: 'radial-gradient(120% 120% at 50% 0%, rgba(217,171,78,.20), transparent 55%), linear-gradient(180deg, #221708, #120c06)',
@@ -1209,6 +1420,7 @@ export function SpinWheelGame({ onOpenMyPrizes, onNavigate }: { onOpenMyPrizes?:
               boxShadow: '0 0 80px rgba(217,171,78,.30)',
               transform: showWinner ? 'scale(1)' : 'scale(.72)',
               transition: 'transform .45s cubic-bezier(.18,1.4,.3,1)',
+              maxWidth: 'calc(100vw - 40px)',
             }}>
             {/* Rays */}
             <div style={{
@@ -1344,15 +1556,17 @@ export function SpinWheelGame({ onOpenMyPrizes, onNavigate }: { onOpenMyPrizes?:
 
       {/* Toast */}
       {toast && (
-        <div style={{
-          position: 'fixed', bottom: 26, left: '50%', transform: 'translateX(-50%)',
-          background: 'linear-gradient(180deg, #221708, #140d06)',
-          border: `1px solid ${toast.mode === 'gold' ? 'rgba(214,178,94,.38)' : 'rgba(230,69,92,.55)'}`,
-          borderRadius: 14, color: '#efe6d2', padding: '13px 22px', fontSize: '13.5px', fontWeight: 700,
-          zIndex: 70, display: 'flex', gap: 9, alignItems: 'center',
-          boxShadow: '0 16px 40px rgba(0,0,0,.6)',
-          opacity: 1, transition: '.35s',
-        }}
+        <div className="aw-toast"
+          style={{
+            position: 'fixed', bottom: 26, left: '50%', transform: 'translateX(-50%)',
+            background: 'linear-gradient(180deg, #221708, #140d06)',
+            border: `1px solid ${toast.mode === 'gold' ? 'rgba(214,178,94,.38)' : 'rgba(230,69,92,.55)'}`,
+            borderRadius: 14, color: '#efe6d2', padding: '13px 22px', fontSize: '13.5px', fontWeight: 700,
+            zIndex: 70, display: 'flex', gap: 9, alignItems: 'center',
+            boxShadow: '0 16px 40px rgba(0,0,0,.6)',
+            opacity: 1, transition: '.35s',
+            maxWidth: 'calc(100vw - 32px)',
+          }}
           dangerouslySetInnerHTML={{ __html: toast.html }} />
       )}
 
