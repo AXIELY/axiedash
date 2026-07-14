@@ -2,31 +2,49 @@ import { useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { useLanguage } from '../contexts/LanguageContext';
 import { LanguageToggle } from '../components/LanguageToggle';
-import { Crown, Mail, Lock, User, Eye, EyeOff, AlertCircle, Phone } from 'lucide-react';
+import { Crown, Mail, Lock, User, Eye, EyeOff, AlertCircle, Phone, ChevronDown } from 'lucide-react';
 
-// ─── Libyan phone helpers ──────────────────────────────────────────────────────
+// ─── Multi-country phone helpers ──────────────────────────────────────────────
 
-const ALLOWED_PREFIXES = ['91', '92'];
-
-function normalizeLibyanPhone(raw: string): string {
-  let clean = raw.replace(/[^0-9]/g, '');
-  if (clean.startsWith('218')) clean = clean.slice(3);
-  if (clean.startsWith('0'))   clean = clean.slice(1);
-  return clean.slice(0, 9);
+interface CountryDef {
+  code: string;
+  flag: string;
+  name: string;
+  nameAr: string;
+  maxLen: number;
+  placeholder: string;
+  validPrefixes: string[];
 }
 
-function validateLibyanPhone(national: string): string | null {
-  const clean = normalizeLibyanPhone(national);
-  if (clean.length !== 9) return 'INVALID_LENGTH';
-  const prefix = clean.slice(0, 2);
-  if (!ALLOWED_PREFIXES.includes(prefix)) return 'INVALID_PREFIX';
+const COUNTRIES: CountryDef[] = [
+  { code: '+218', flag: '🇱🇾', name: 'Libya', nameAr: 'ليبيا', maxLen: 9, placeholder: '92 621 9540', validPrefixes: ['91', '92'] },
+  { code: '+93',  flag: '🇦🇫', name: 'Afghanistan', nameAr: 'أفغانستان', maxLen: 9, placeholder: '70 123 4567', validPrefixes: ['7'] },
+  { code: '+94',  flag: '🇱🇰', name: 'Sri Lanka', nameAr: 'سريلانكا', maxLen: 9, placeholder: '71 234 5678', validPrefixes: ['7'] },
+];
+
+function normalizePhone(raw: string, country: CountryDef): string {
+  let clean = raw.replace(/[^0-9]/g, '');
+  const ccDigits = country.code.replace(/[^0-9]/g, '');
+  if (clean.startsWith(ccDigits)) clean = clean.slice(ccDigits.length);
+  if (clean.startsWith('0')) clean = clean.slice(1);
+  return clean.slice(0, country.maxLen);
+}
+
+function validatePhone(national: string, country: CountryDef): string | null {
+  const clean = normalizePhone(national, country);
+  if (clean.length !== country.maxLen) return 'INVALID_LENGTH';
+  const matchesPrefix = country.validPrefixes.some(p => clean.startsWith(p));
+  if (!matchesPrefix) return 'INVALID_PREFIX';
   return null;
 }
 
 const ERROR_MESSAGES: Record<string, string> = {
-  INVALID_LENGTH:  'أدخل رقمًا ليبيًا مكونًا من 9 أرقام',
-  INVALID_PREFIX:  'أدخل رقمًا ليبيًا صحيحًا يبدأ بـ91 أو 92',
+  INVALID_LENGTH:  'أدخل رقمًا صحيحًا بالعدد المطلوب من الأرقام',
+  INVALID_PREFIX:  'بادئة الرقم غير صالحة لهذا البلد',
   INVALID_LIBYAN_PHONE: 'أدخل رقمًا ليبيًا صحيحًا يبدأ بـ91 أو 92',
+  INVALID_PHONE_LENGTH: 'أدخل رقمًا صحيحًا بالعدد المطلوب من الأرقام',
+  INVALID_PHONE_PREFIX: 'بادئة الرقم غير صالحة لهذا البلد',
+  INVALID_PHONE: 'رقم الهاتف غير صالح',
   PHONE_ALREADY_USED: 'رقم الهاتف مستخدم في حساب آخر',
   USERNAME_ALREADY_USED: 'اسم المستخدم غير متاح',
   EMAIL_ALREADY_REGISTERED: 'البريد الإلكتروني مستخدم في حساب آخر',
@@ -50,53 +68,91 @@ function mapError(raw: string): string {
 
 // ─── Phone input component ────────────────────────────────────────────────────
 
-function LibyanPhoneInput({
+function PhoneInput({
   value,
   onChange,
   error,
+  selectedCountry,
+  onCountryChange,
 }: {
   value: string;
   onChange: (v: string) => void;
   error?: string | null;
+  selectedCountry: CountryDef;
+  onCountryChange: (c: CountryDef) => void;
 }) {
+  const [dropdownOpen, setDropdownOpen] = useState(false);
+
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    onChange(normalizeLibyanPhone(e.target.value));
+    onChange(normalizePhone(e.target.value, selectedCountry));
   };
 
   return (
     <div>
       <label className="block text-xs font-semibold mb-1.5" style={{ color: 'var(--text-2)' }}>
-        رقم الهاتف الليبي
+        رقم الهاتف
       </label>
       <div
-        className="flex items-center rounded-[14px] overflow-hidden"
+        className="flex items-center rounded-[14px] overflow-hidden relative"
         style={{
           background: 'var(--card-2)',
           border: `1px solid ${error ? 'rgba(239,68,68,0.45)' : 'var(--border)'}`,
           direction: 'ltr',
         }}
       >
-        {/* Fixed +218 prefix */}
-        <div
-          className="flex items-center gap-1.5 px-3 py-3 shrink-0 select-none border-l"
+        <button
+          type="button"
+          onClick={() => setDropdownOpen(!dropdownOpen)}
+          className="flex items-center gap-1 px-2.5 py-3 shrink-0 select-none border-l hover:bg-white/5 transition-colors"
           style={{
             color: 'var(--gold)',
             background: 'rgba(214,180,123,0.07)',
             borderColor: 'var(--border)',
-            minWidth: '68px',
+            minWidth: '90px',
           }}
         >
-          <Phone className="w-3.5 h-3.5 opacity-70" strokeWidth={1.5} />
-          <span className="text-sm font-bold tracking-tight">+218</span>
-        </div>
+          <span className="text-base leading-none">{selectedCountry.flag}</span>
+          <span className="text-sm font-bold tracking-tight">{selectedCountry.code}</span>
+          <ChevronDown className="w-3 h-3 opacity-50" strokeWidth={2} />
+        </button>
 
-        {/* National number input — always LTR */}
+        {dropdownOpen && (
+          <>
+            <div className="fixed inset-0 z-40" onClick={() => setDropdownOpen(false)} />
+            <div
+              className="absolute top-full left-0 mt-1 z-50 rounded-xl overflow-hidden shadow-2xl border"
+              style={{
+                background: 'var(--card-1)',
+                borderColor: 'var(--border)',
+                minWidth: '220px',
+              }}
+            >
+              {COUNTRIES.map(c => (
+                <button
+                  key={c.code}
+                  type="button"
+                  onClick={() => { onCountryChange(c); setDropdownOpen(false); onChange(''); }}
+                  className="w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-white/5 transition-colors"
+                  style={{
+                    color: selectedCountry.code === c.code ? 'var(--gold)' : 'var(--text-1)',
+                    background: selectedCountry.code === c.code ? 'rgba(214,180,123,0.08)' : undefined,
+                  }}
+                >
+                  <span className="text-lg">{c.flag}</span>
+                  <span className="text-sm font-medium flex-1">{c.nameAr}</span>
+                  <span className="text-xs font-mono opacity-60">{c.code}</span>
+                </button>
+              ))}
+            </div>
+          </>
+        )}
+
         <input
           type="tel"
           value={value}
           onChange={handleChange}
-          placeholder="92 621 9540"
-          maxLength={9}
+          placeholder={selectedCountry.placeholder}
+          maxLength={selectedCountry.maxLen}
           inputMode="numeric"
           dir="ltr"
           className="flex-1 bg-transparent px-3 py-3 text-sm outline-none placeholder-slate-600"
@@ -106,9 +162,9 @@ function LibyanPhoneInput({
       {error && (
         <p className="text-xs mt-1" style={{ color: '#f87171' }}>{error}</p>
       )}
-      {!error && value.length > 0 && value.length === 9 && (
+      {!error && value.length > 0 && value.length === selectedCountry.maxLen && (
         <p className="text-xs mt-1" style={{ color: 'rgba(74,222,128,0.7)' }}>
-          ✓ +218{value}
+          ✓ {selectedCountry.code}{value}
         </p>
       )}
     </div>
@@ -124,6 +180,7 @@ export const Login = () => {
   const [username, setUsername] = useState('');
   const [phone, setPhone] = useState('');
   const [phoneError, setPhoneError] = useState<string | null>(null);
+  const [selectedCountry, setSelectedCountry] = useState<CountryDef>(COUNTRIES[0]);
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
@@ -150,7 +207,7 @@ export const Login = () => {
       }
 
       // Phone validation
-      const phoneValidationError = validateLibyanPhone(phone);
+      const phoneValidationError = validatePhone(phone, selectedCountry);
       if (phoneValidationError) {
         setPhoneError(ERROR_MESSAGES[phoneValidationError] || 'رقم هاتف غير صالح');
         return;
@@ -162,8 +219,8 @@ export const Login = () => {
       if (isLogin) {
         await signIn(email, password);
       } else {
-        const normalizedPhone = normalizeLibyanPhone(phone);
-        await signUp(email, password, username, normalizedPhone);
+        const normalizedPhone = normalizePhone(phone, selectedCountry);
+        await signUp(email, password, username, normalizedPhone, selectedCountry.code);
       }
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -297,12 +354,14 @@ export const Login = () => {
               </div>
             </div>
 
-            {/* Libyan phone — signup only */}
+            {/* Phone — signup only */}
             {!isLogin && (
-              <LibyanPhoneInput
+              <PhoneInput
                 value={phone}
                 onChange={v => { setPhone(v); setPhoneError(null); }}
                 error={phoneError}
+                selectedCountry={selectedCountry}
+                onCountryChange={setSelectedCountry}
               />
             )}
 

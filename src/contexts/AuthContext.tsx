@@ -10,7 +10,7 @@ interface AuthContextType {
   loading: boolean;
   accountStatus: AccountStatus | null;
   signIn: (email: string, password: string) => Promise<void>;
-  signUp: (email: string, password: string, username: string, phone: string) => Promise<void>;
+  signUp: (email: string, password: string, username: string, phone: string, countryCode?: string) => Promise<void>;
   signOut: () => Promise<void>;
   refreshUser: () => Promise<void>;
 }
@@ -105,7 +105,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       .eq('email', email);
   };
 
-  const signUp = async (email: string, password: string, username: string, phone: string) => {
+  const signUp = async (email: string, password: string, username: string, phone: string, countryCode: string = '+218') => {
     const { data, error } = await supabase.auth.signUp({ email, password });
     if (error) throw error;
 
@@ -126,6 +126,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       const { data: regData, error: regError } = await supabase.rpc('register_with_phone', {
         p_username: username,
         p_phone: phone,
+        p_country_code: countryCode,
       });
 
       if (regError) {
