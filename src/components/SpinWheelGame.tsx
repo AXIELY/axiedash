@@ -430,6 +430,20 @@ export function SpinWheelGame({ onOpenMyPrizes, onNavigate }: { onOpenMyPrizes?:
     return () => { if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current); };
   }, []);
 
+  // ─── Ticker (must be before early returns) ────────────────────────────────
+  const tickerWinners = [
+    '🎉 «kareem_ly» فاز قبل قليل بـ 500 نقطة',
+    '💎 «sara.tr» حصلت على كرت ليبيانا 5 د.ل',
+    '🏆 «malik99» فاز بعضوية VIP ليوم كامل!',
+    '🎵 «huda_gh» ربحت 100 عملة تيك توك',
+    '⭐ «omar_bz» أضاف 250 نقطة لرصيده الآن',
+  ];
+  const [tickerIdx, setTickerIdx] = useState(0);
+  useEffect(() => {
+    const id = setInterval(() => setTickerIdx(prev => (prev + 1) % tickerWinners.length), 4200);
+    return () => clearInterval(id);
+  }, []);
+
   // ─── Loading ────────────────────────────────────────────────────────────────
   if (loading) {
     return (
@@ -470,20 +484,6 @@ export function SpinWheelGame({ onOpenMyPrizes, onNavigate }: { onOpenMyPrizes?:
   const grandProgress = grandState?.current_progress ?? 0;
   const ringLen = 345.6;
   const ringOffset = grandLocked ? ringLen * (1 - Math.min(grandProgress / grandTarget, 1)) : 0;
-
-  // Winner ticker
-  const tickerWinners = [
-    '🎉 «kareem_ly» فاز قبل قليل بـ 500 نقطة',
-    '💎 «sara.tr» حصلت على كرت ليبيانا 5 د.ل',
-    '🏆 «malik99» فاز بعضوية VIP ليوم كامل!',
-    '🎵 «huda_gh» ربحت 100 عملة تيك توك',
-    '⭐ «omar_bz» أضاف 250 نقطة لرصيده الآن',
-  ];
-  const [tickerIdx, setTickerIdx] = useState(0);
-  useEffect(() => {
-    const id = setInterval(() => setTickerIdx(prev => (prev + 1) % tickerWinners.length), 4200);
-    return () => clearInterval(id);
-  }, []);
 
   return (
     <div dir="rtl" className="relative w-full overflow-x-hidden" style={{ fontFamily: "'Tajawal', sans-serif", color: '#efe6d2', background: 'transparent' }}>
