@@ -44,6 +44,28 @@ function getBrowserFamily(): string {
   return 'other';
 }
 
+function urlBase64ToUint8Array(base64String: string): Uint8Array {
+  const padding = '='.repeat((4 - base64String.length % 4) % 4);
+  const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+  const rawData = window.atob(base64);
+  return Uint8Array.from([...rawData].map(c => c.charCodeAt(0)));
+}
+
+async function fetchVapidPublicKey(): Promise<string | null> {
+  try {
+    const url = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/get-push-config`;
+    const resp = await fetch(url, {
+      headers: { 'Content-Type': 'application/json' },
+    });
+    if (!resp.ok) return null;
+    const data = await resp.json();
+    if (data?.success && data.publicKey) return data.publicKey;
+    return null;
+  } catch {
+    return null;
+  }
+}
+
 export function usePushNotifications() {
   const { user } = useAuth();
   const [platform, setPlatform] = useState<PlatformInfo>(() => detectPlatform());
@@ -51,6 +73,7 @@ export function usePushNotifications() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const subscriptionRef = useRef<PushSubscription | null>(null);
+  const vapidKeyRef = useRef<string | null>(null);
 
   useEffect(() => {
     const info = detectPlatform();
@@ -76,7 +99,6 @@ export function usePushNotifications() {
     }
   }, []);
 
-  // Listen for SW messages about subscription changes
   useEffect(() => {
     if (!('serviceWorker' in navigator)) return;
     const handler = (event: MessageEvent) => {
@@ -156,27 +178,18 @@ export function usePushNotifications() {
 
       const reg = await navigator.serviceWorker.ready;
 
-      // Get VAPID public key from env
-      const vapidKey = import.meta.env.VITE_VAPID_PUBLIC_KEY;
-      if (!vapidKey) {
-        // Without VAPID key, subscribe without applicationServerKey (limited)
-        const sub = await reg.pushManager.subscribe({
-          userVisibleOnly: true,
-        });
-        subscriptionRef.current = sub;
-        await registerSubscriptionWithBackend(sub.toJSON());
-        setPermissionState('SUBSCRIBED');
-        setLoading(false);
-        return true;
+      // Fetch VAPID public key from server
+      if (!vapidKeyRef.current) {
+        vapidKeyRef.current = await fetchVapidPublicKey();
       }
 
-      // Convert VAPID key
-      const urlBase64ToUint8Array = (base64String: string) => {
-        const padding = '='.repeat((4 - base64String.length % 4) % 4);
-        const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
-        const rawData = window.atob(base64);
-        return Uint8Array.from([...rawData].map(c => c.charCodeAt(0)));
-      };
+      const vapidKey = vapidKeyRef.current;
+      if (!vapidKey) {
+        setError('VAPID_NOT_CONFIGURED');
+        setPermissionState('SUBSCRIPTION_FAILED');
+        setLoading(false);
+        return false;
+      }
 
       const sub = await reg.pushManager.subscribe({
         userVisibleOnly: true,
@@ -203,7 +216,6 @@ export function usePushNotifications() {
         const endpoint = subscriptionRef.current.endpoint;
         await subscriptionRef.current.unsubscribe();
         subscriptionRef.current = null;
-        // Deactivate on backend
         await supabase.rpc('deactivate_push_subscription', { p_endpoint: endpoint });
       }
       setPermissionState('GRANTED');
@@ -212,7 +224,6 @@ export function usePushNotifications() {
     }
   }, []);
 
-  // Call on logout to prevent cross-account notifications
   const deactivateForLogout = useCallback(async () => {
     if (subscriptionRef.current) {
       const endpoint = subscriptionRef.current.endpoint;

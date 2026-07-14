@@ -1,7 +1,8 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Bell, BarChart3, Send, FileText, Zap, Users, Smartphone, ClipboardList, Settings, TrendingUp, CheckCircle, XCircle, Clock, AlertTriangle, Search, RefreshCw, ChevronDown, Eye, Trash2, CreditCard as Edit3, Plus, Copy, Filter } from 'lucide-react';
+import { Bell, BarChart3, Send, FileText, Zap, Users, Smartphone, ClipboardList, Settings, TrendingUp, CheckCircle, XCircle, Clock, AlertTriangle, Search, RefreshCw, ChevronDown, Eye, Trash2, CreditCard as Edit3, Plus, Copy, Filter, TestTube2 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useLanguage } from '../../contexts/LanguageContext';
+import { usePushNotifications } from '../../hooks/usePushNotifications';
 
 // ── Tab definitions ───────────────────────────────────────────────
 const TABS = [
@@ -106,6 +107,146 @@ function OverviewTab() {
           );
         })}
       </div>
+
+      <AdminTestPushButton />
+    </div>
+  );
+}
+
+// ── Admin Test Push Button ───────────────────────────────────────
+const TEST_PUSH_ERRORS: Record<string, string> = {
+  NO_ACTIVE_SUBSCRIPTION: 'فعّل إشعارات المتصفح على هذا الجهاز أولاً',
+  VAPID_NOT_CONFIGURED: 'مفاتيح Web Push غير مكتملة',
+  PERMISSION_DENIED: 'المتصفح لم يمنح إذن الإشعارات',
+  PUSH_SEND_FAILED: 'تعذر إرسال الإشعار التجريبي',
+  UNAUTHORIZED: 'غير مصرّح، سجّل الدخول مجدداً',
+};
+
+function AdminTestPushButton() {
+  const { language } = useLanguage();
+  const { isSubscribed, permissionState, requestPermission } = usePushNotifications();
+  const [testLoading, setTestLoading] = useState(false);
+  const [testResult, setTestResult] = useState<any>(null);
+  const [testError, setTestError] = useState<string | null>(null);
+
+  const handleTestPush = async () => {
+    setTestLoading(true);
+    setTestResult(null);
+    setTestError(null);
+
+    try {
+      // If not subscribed, activate first
+      if (!isSubscribed) {
+        if (permissionState === 'DENIED') {
+          setTestError(TEST_PUSH_ERRORS.PERMISSION_DENIED);
+          setTestLoading(false);
+          return;
+        }
+        const ok = await requestPermission();
+        if (!ok) {
+          setTestError(TEST_PUSH_ERRORS.NO_ACTIVE_SUBSCRIPTION);
+          setTestLoading(false);
+          return;
+        }
+      }
+
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.access_token) {
+        setTestError(TEST_PUSH_ERRORS.UNAUTHORIZED);
+        setTestLoading(false);
+        return;
+      }
+
+      const url = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/send-test-push`;
+      const resp = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session.access_token}`,
+          'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
+        },
+      });
+
+      const data = await resp.json();
+
+      if (!data.success) {
+        setTestError(TEST_PUSH_ERRORS[data.code] || data.error || TEST_PUSH_ERRORS.PUSH_SEND_FAILED);
+      } else {
+        setTestResult(data);
+      }
+    } catch (err: any) {
+      setTestError(err.message || TEST_PUSH_ERRORS.PUSH_SEND_FAILED);
+    } finally {
+      setTestLoading(false);
+    }
+  };
+
+  return (
+    <div className="glass-card p-4 sm:p-5">
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ background: 'rgba(214,180,123,0.12)' }}>
+            <TestTube2 className="w-5 h-5" style={{ color: '#d6b47b' }} />
+          </div>
+          <div>
+            <h3 className="text-sm font-bold text-white">
+              {language === 'ar' ? 'إرسال إشعار تجريبي لنفسي' : 'Send Test Push to Myself'}
+            </h3>
+            <p className="text-[10px] text-white/40 mt-0.5">
+              {language === 'ar' ? 'يرسل إشعار حقيقي عبر المتصفح لهذا الجهاز' : 'Sends a real browser push to this device'}
+            </p>
+          </div>
+        </div>
+
+        <button
+          onClick={handleTestPush}
+          disabled={testLoading}
+          className="px-4 py-2 rounded-xl text-xs font-bold transition-all"
+          style={{
+            background: testLoading ? 'rgba(214,180,123,0.15)' : 'linear-gradient(135deg, #d6b47b, #c9a050)',
+            color: testLoading ? '#d6b47b' : '#0a0818',
+            opacity: testLoading ? 0.7 : 1,
+          }}
+        >
+          {testLoading ? (
+            <span className="flex items-center gap-1.5">
+              <RefreshCw className="w-3 h-3 animate-spin" />
+              {language === 'ar' ? 'جارٍ الإرسال...' : 'Sending...'}
+            </span>
+          ) : (
+            <span className="flex items-center gap-1.5">
+              <Send className="w-3 h-3" />
+              {language === 'ar' ? 'إرسال' : 'Send'}
+            </span>
+          )}
+        </button>
+      </div>
+
+      {testError && (
+        <div className="mt-3 px-3 py-2 rounded-lg text-xs" style={{ background: 'rgba(239,68,68,0.1)', color: '#f87171' }}>
+          <div className="flex items-center gap-2">
+            <XCircle className="w-3.5 h-3.5 shrink-0" />
+            <span>{testError}</span>
+          </div>
+        </div>
+      )}
+
+      {testResult && (
+        <div className="mt-3 px-3 py-2.5 rounded-lg text-xs" style={{ background: 'rgba(74,222,128,0.08)', border: '1px solid rgba(74,222,128,0.15)' }}>
+          <div className="flex items-center gap-2 mb-2">
+            <CheckCircle className="w-3.5 h-3.5 text-green-400 shrink-0" />
+            <span className="text-green-400 font-bold">
+              {language === 'ar' ? 'تم الإرسال بنجاح!' : 'Sent successfully!'}
+            </span>
+          </div>
+          <div className="grid grid-cols-4 gap-2 text-white/60">
+            <div><span className="text-white/40 block">{language === 'ar' ? 'مستهدف' : 'Targeted'}</span>{testResult.targeted}</div>
+            <div><span className="text-white/40 block">{language === 'ar' ? 'أُرسل' : 'Sent'}</span>{testResult.sent}</div>
+            <div><span className="text-white/40 block">{language === 'ar' ? 'فشل' : 'Failed'}</span>{testResult.failed}</div>
+            <div><span className="text-white/40 block">{language === 'ar' ? 'مُلغى' : 'Deactivated'}</span>{testResult.deactivated}</div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
