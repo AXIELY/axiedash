@@ -39,6 +39,10 @@ export function usePushNotifications() {
       if (event.data?.type === 'PUSH_SUBSCRIPTION_CHANGED' && event.data.subscription) {
         registerSubscriptionWithBackend(event.data.subscription).then(() => refreshStatus());
       }
+      if (event.data?.type === 'PUSH_SUBSCRIPTION_EXPIRED') {
+        // SW says the old subscription is invalid — re-subscribe from the page
+        requestAndRegister().catch(() => {});
+      }
       if (event.data?.type === 'NOTIFICATION_CLICK' && event.data.url) {
         window.location.hash = event.data.url;
         if (event.data.notification_id) {

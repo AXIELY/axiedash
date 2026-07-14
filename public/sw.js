@@ -19,7 +19,7 @@ const ALLOWED_DEEP_LINK_PATTERNS = [
   /^\/games\//,
   /^\/notifications/,
   /^\/profile/,
-  /^\/settings/,
+  /^\/settings\//,
 ];
 
 function isSafeDeepLink(url) {
@@ -116,53 +116,23 @@ self.addEventListener('notificationclick', (event) => {
 });
 
 // ── Subscription change ─────────────────────────────────────────
+// The service worker cannot access env vars, so it asks the controlled
+// page to handle re-subscription (the page has the Supabase URL + VAPID key).
 self.addEventListener('pushsubscriptionchange', (event) => {
   event.waitUntil(
     (async () => {
       try {
-        // Fetch VAPID public key from server so re-subscription uses correct key
-        const configResp = await fetch(
-          (self.location.origin || '') + '/functions/v1/get-push-config',
-          { headers: { 'Content-Type': 'application/json' } }
-        ).catch(() => null);
-
-        let applicationServerKey = undefined;
-        if (configResp && configResp.ok) {
-          const config = await configResp.json().catch(() => ({}));
-          if (config?.success && config.publicKey) {
-            applicationServerKey = urlBase64ToUint8Array(config.publicKey);
-          }
+        const clientsList = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+        for (const client of clientsList) {
+          client.postMessage({ type: 'PUSH_SUBSCRIPTION_EXPIRED' });
         }
-
-        const subscribeOptions = event.oldSubscription?.options || { userVisibleOnly: true };
-        if (applicationServerKey) {
-          subscribeOptions.applicationServerKey = applicationServerKey;
-        }
-
-        const newSub = await self.registration.pushManager.subscribe(subscribeOptions);
-
-        // Notify any open client to re-register with backend
-        const clients = await self.clients.matchAll({ type: 'window' });
-        clients.forEach((client) => {
-          client.postMessage({
-            type: 'PUSH_SUBSCRIPTION_CHANGED',
-            subscription: newSub.toJSON(),
-          });
-        });
       } catch (err) {
-        // If re-subscription fails, notify clients so they can retry from the page
-        const clients = await self.clients.matchAll({ type: 'window' });
-        clients.forEach((client) => {
-          client.postMessage({
-            type: 'PUSH_SUBSCRIPTION_CHANGE_FAILED',
-            error: err instanceof Error ? err.message : String(err),
-          });
-        });
+        console.error('[AXIE SW] pushsubscriptionchange error:', err);
       }
     })()
   );
 });
 
-// ── Install & activate — claim immediately, no cache management ─
+// ── Install & activate — claim immediately, no cache management ──
 self.addEventListener('install', () => self.skipWaiting());
 self.addEventListener('activate', (event) => event.waitUntil(self.clients.claim()));

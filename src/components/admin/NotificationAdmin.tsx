@@ -1,8 +1,10 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Bell, BarChart3, Send, FileText, Zap, Users, Smartphone, ClipboardList, Settings, TrendingUp, CheckCircle, XCircle, Clock, AlertTriangle, Search, RefreshCw, ChevronDown, Eye, Trash2, CreditCard as Edit3, Plus, Copy, Filter, TestTube2 } from 'lucide-react';
+import { Bell, BarChart3, Send, FileText, Zap, Smartphone, ClipboardList, Clock, Search, RefreshCw, TestTube2, Stethoscope, CheckCircle, XCircle } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useLanguage } from '../../contexts/LanguageContext';
 import { usePushNotifications } from '../../hooks/usePushNotifications';
+import { useAuth } from '../../contexts/AuthContext';
+import { fetchVapidPublicKey, urlBase64ToUint8Array, sha256Hex, getBrowserFamily } from '../../lib/push-platform';
 
 // ── Tab definitions ───────────────────────────────────────────────
 const TABS = [
@@ -68,22 +70,30 @@ function OverviewTab() {
   const [stats, setStats] = useState<any>(null);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    (async () => {
-      const { data } = await supabase.rpc('get_notification_stats');
-      setStats(data);
-      setLoading(false);
-    })();
+  const [myDevices, setMyDevices] = useState<number | null>(null);
+
+  const fetchStats = useCallback(async () => {
+    setLoading(true);
+    const { data } = await supabase.rpc('get_notification_stats');
+    const unwrapped = data?.success ? data.stats : data;
+    setStats(unwrapped);
+    const { data: diagData } = await supabase.rpc('get_my_push_diagnostics');
+    setMyDevices(diagData?.active_devices ?? 0);
+    setLoading(false);
   }, []);
 
+  useEffect(() => { fetchStats(); }, [fetchStats]);
+
   if (loading) return <LoadingSpinner />;
+
+  const activeDevices = myDevices ?? stats?.active_subscriptions ?? stats?.active_devices ?? 0;
 
   const cards = [
     { label: language === 'ar' ? 'إجمالي المرسلة' : 'Total Sent', value: stats?.total_sent ?? 0, icon: Send, color: '#a78bfa' },
     { label: language === 'ar' ? 'تم التوصيل' : 'Delivered', value: stats?.total_delivered ?? 0, icon: CheckCircle, color: '#4ade80' },
     { label: language === 'ar' ? 'فشل' : 'Failed', value: stats?.total_failed ?? 0, icon: XCircle, color: '#ef4444' },
     { label: language === 'ar' ? 'قيد الانتظار' : 'Pending', value: stats?.total_pending ?? 0, icon: Clock, color: '#f59e0b' },
-    { label: language === 'ar' ? 'أجهزة نشطة' : 'Active Devices', value: stats?.active_devices ?? 0, icon: Smartphone, color: '#38bdf8' },
+    { label: language === 'ar' ? 'أجهزة نشطة' : 'Active Devices', value: activeDevices, icon: Smartphone, color: '#38bdf8' },
     { label: language === 'ar' ? 'غير مقروءة' : 'Unread', value: stats?.total_unread ?? 0, icon: Bell, color: '#f97316' },
   ];
 
@@ -108,7 +118,22 @@ function OverviewTab() {
         })}
       </div>
 
-      <AdminTestPushButton />
+      <div className="glass-card p-4">
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="text-sm font-bold text-white">
+            {language === 'ar' ? 'الأجهزة النشطة لحسابك' : 'Your Active Devices'}
+          </h3>
+          <button onClick={fetchStats} className="text-white/40 hover:text-white/70 transition-colors">
+            <RefreshCw className="w-3.5 h-3.5" />
+          </button>
+        </div>
+        <p className="text-2xl font-bold" style={{ color: activeDevices > 0 ? '#4ade80' : '#f59e0b' }}>
+          {activeDevices}
+        </p>
+      </div>
+
+      <DeviceDiagnosticPanel onRepaired={fetchStats} />
+      <AdminTestPushButton onSent={fetchStats} />
     </div>
   );
 }
@@ -122,9 +147,236 @@ const TEST_PUSH_ERRORS: Record<string, string> = {
   UNAUTHORIZED: 'غير مصرّح، سجّل الدخول مجدداً',
 };
 
-function AdminTestPushButton() {
+function DeviceDiagnosticPanel({ onRepaired }: { onRepaired: () => void }) {
   const { language } = useLanguage();
-  const { isSubscribed, state: pushState, needsRepair, requestAndRegister, repairCurrentDevice, diagnostics, refreshStatus } = usePushNotifications();
+  const { user } = useAuth();
+  const [running, setRunning] = useState(false);
+  const [steps, setSteps] = useState<{ label: string; status: 'ok' | 'fail' | 'warn'; detail: string }[]>([]);
+
+  const addStep = (label: string, status: 'ok' | 'fail' | 'warn', detail: string) =>
+    setSteps(prev => [...prev, { label, status, detail }]);
+
+  const runDiagnostic = async () => {
+    setRunning(true);
+    setSteps([]);
+
+    // 1. Origin
+    const origin = window.location.origin;
+    const isProd = origin.startsWith('https://') && !origin.includes('localhost');
+    const isLocalhost = origin.startsWith('http://localhost');
+    addStep('1. Origin', isProd || isLocalhost ? 'ok' : 'warn', origin);
+
+    // 2. Auth session
+    const { data: sessionData } = await supabase.auth.getSession();
+    addStep('2. Auth session', !!sessionData.session ? 'ok' : 'fail', !!sessionData.session ? 'exists' : 'missing');
+
+    // 3. Auth user ID
+    const userId = user?.id ?? null;
+    addStep('3. Auth user ID', userId ? 'ok' : 'fail', userId ? `${userId.slice(0, 8)}…` : 'null');
+
+    // 4. Notification.permission
+    addStep('4. Notification.permission',
+      Notification.permission === 'granted' ? 'ok' : 'fail',
+      Notification.permission);
+
+    // 5. SW support
+    const swSupported = 'serviceWorker' in navigator;
+    addStep('5. SW support', swSupported ? 'ok' : 'fail', swSupported ? 'yes' : 'no');
+
+    // 6. SW ready
+    let reg: ServiceWorkerRegistration | null = null;
+    try {
+      reg = await navigator.serviceWorker.ready;
+      addStep('6. SW ready', 'ok', 'resolved');
+    } catch {
+      addStep('6. SW ready', 'fail', 'rejected');
+      setRunning(false);
+      return;
+    }
+
+    // 7. SW scope
+    addStep('7. SW scope', reg.scope?.includes(origin) || isLocalhost ? 'ok' : 'warn',
+      reg.scope || 'unknown');
+
+    // 8. SW controller
+    const controlled = !!navigator.serviceWorker.controller;
+    addStep('8. SW controller', controlled ? 'ok' : 'warn', controlled ? 'yes' : 'no');
+
+    // 9. PushManager support
+    const pmSupported = 'PushManager' in window;
+    addStep('9. PushManager', pmSupported ? 'ok' : 'fail', pmSupported ? 'yes' : 'no');
+
+    // 10. get-push-config
+    let vapidKey: string | null = null;
+    try {
+      vapidKey = await fetchVapidPublicKey();
+      addStep('10. VAPID config', vapidKey ? 'ok' : 'fail', vapidKey ? `${vapidKey.slice(0, 12)}…` : 'missing');
+    } catch {
+      addStep('10. VAPID config', 'fail', 'fetch error');
+      setRunning(false);
+      return;
+    }
+
+    // 11. VAPID key conversion
+    let appServerKey: Uint8Array | null = null;
+    try {
+      appServerKey = urlBase64ToUint8Array(vapidKey!);
+      addStep('11. VAPID key convert', appServerKey.length > 0 ? 'ok' : 'fail', `${appServerKey.length} bytes`);
+    } catch {
+      addStep('11. VAPID key convert', 'fail', 'conversion error');
+      setRunning(false);
+      return;
+    }
+
+    // 12. Existing subscription
+    let sub: PushSubscription | null = null;
+    try {
+      sub = await reg.pushManager.getSubscription();
+      addStep('12. Existing subscription', sub ? 'ok' : 'warn', sub ? 'exists' : 'none');
+    } catch {
+      addStep('12. Existing subscription', 'fail', 'getSubscription error');
+    }
+
+    // 13. Create subscription if missing
+    if (!sub) {
+      try {
+        sub = await reg.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: appServerKey!,
+        });
+        addStep('13. New subscription', 'ok', 'created');
+      } catch (err: any) {
+        addStep('13. New subscription', 'fail', err?.message || 'subscribe failed');
+        setRunning(false);
+        return;
+      }
+    } else {
+      addStep('13. New subscription', 'ok', 'reused existing');
+    }
+
+    // 14-16. Extract keys
+    const subJson = sub.toJSON();
+    const endpoint = subJson.endpoint;
+    const p256dh = subJson.keys?.p256dh;
+    const auth = subJson.keys?.auth;
+
+    addStep('14. Endpoint', endpoint ? 'ok' : 'fail', endpoint ? `${endpoint.slice(0, 30)}…` : 'missing');
+    addStep('15. p256dh key', p256dh ? 'ok' : 'fail', p256dh ? `${p256dh.slice(0, 12)}…` : 'missing');
+    addStep('16. auth key', auth ? 'ok' : 'fail', auth ? `${auth.slice(0, 12)}…` : 'missing');
+
+    if (!endpoint || !p256dh || !auth) {
+      addStep('17. Validation', 'fail', 'SUBSCRIPTION_KEYS_MISSING');
+      setRunning(false);
+      return;
+    }
+
+    // 17. RPC call
+    addStep('17. register_push_subscription RPC', 'warn', 'calling…');
+    try {
+      const { data, error } = await supabase.rpc('register_push_subscription', {
+        p_endpoint: endpoint,
+        p_p256dh: p256dh,
+        p_auth: auth,
+        p_origin: origin,
+        p_platform: 'desktop',
+        p_browser: getBrowserFamily(),
+        p_device_label: 'Admin Diagnostic',
+        p_user_agent: navigator.userAgent.slice(0, 200),
+      });
+      if (error) {
+        setSteps(prev => [...prev.slice(0, -1), { label: '17. register_push_subscription RPC', status: 'fail', detail: error.message }]);
+      } else if (data?.success === false) {
+        setSteps(prev => [...prev.slice(0, -1), { label: '17. register_push_subscription RPC', status: 'fail', detail: data.error }]);
+      } else {
+        setSteps(prev => [...prev.slice(0, -1), { label: '17. register_push_subscription RPC', status: 'ok', detail: `status: ${data?.status}` }]);
+      }
+    } catch (err: any) {
+      setSteps(prev => [...prev.slice(0, -1), { label: '17. register_push_subscription RPC', status: 'fail', detail: err?.message || 'exception' }]);
+      setRunning(false);
+      return;
+    }
+
+    // 18. DB read-back
+    try {
+      const endpointHash = await sha256Hex(endpoint);
+      const { data: verifyRow, error: verifyErr } = await supabase
+        .from('push_subscriptions')
+        .select('id, is_active, user_id, origin')
+        .eq('endpoint_hash', endpointHash)
+        .maybeSingle();
+
+      if (verifyErr) {
+        addStep('18. DB read-back', 'fail', verifyErr.message);
+      } else if (!verifyRow) {
+        addStep('18. DB read-back', 'fail', 'row not found');
+      } else if (!verifyRow.is_active) {
+        addStep('18. DB read-back', 'warn', 'row exists but inactive');
+      } else if (verifyRow.user_id !== userId) {
+        addStep('18. DB read-back', 'fail', `user mismatch: ${verifyRow.user_id?.slice(0, 8)}… ≠ ${userId?.slice(0, 8)}…`);
+      } else {
+        addStep('18. DB read-back', 'ok', `active, user_id matches, origin: ${verifyRow.origin?.slice(0, 25)}…`);
+      }
+    } catch (err: any) {
+      addStep('18. DB read-back', 'fail', err?.message || 'error');
+    }
+
+    // 19. Final active device count
+    try {
+      const { data: diagData } = await supabase.rpc('get_my_push_diagnostics');
+      const count = diagData?.active_devices ?? 0;
+      addStep('19. Active devices', count > 0 ? 'ok' : 'fail', `${count}`);
+      if (onRepaired) onRepaired();
+    } catch {
+      addStep('19. Active devices', 'fail', 'query error');
+    }
+
+    setRunning(false);
+  };
+
+  return (
+    <div className="glass-card p-4">
+      <div className="flex items-center justify-between mb-3">
+        <h3 className="text-sm font-bold text-white flex items-center gap-2">
+          <Stethoscope className="w-4 h-4 text-cyan-400" />
+          {language === 'ar' ? 'تشخيص وربط هذا الجهاز' : 'Diagnose & Link This Device'}
+        </h3>
+        <button
+          onClick={runDiagnostic}
+          disabled={running}
+          className="px-3 py-1.5 rounded-lg text-xs font-bold transition-all disabled:opacity-50"
+          style={{ background: 'rgba(34,211,238,0.12)', color: '#22d3ee', border: '1px solid rgba(34,211,238,0.22)' }}
+        >
+          {running ? (language === 'ar' ? 'جاري…' : 'Running…') : (language === 'ar' ? 'تشخيص' : 'Run')}
+        </button>
+      </div>
+
+      {steps.length > 0 && (
+        <div className="space-y-1.5 max-h-80 overflow-y-auto">
+          {steps.map((s, i) => (
+            <div key={i} className="flex items-start gap-2 text-xs">
+              <span style={{
+                width: 18, height: 18, borderRadius: '50%', flexShrink: 0,
+                display: 'grid', placeItems: 'center', fontSize: 10, fontWeight: 700,
+                background: s.status === 'ok' ? 'rgba(74,222,128,0.15)' : s.status === 'warn' ? 'rgba(245,158,11,0.15)' : 'rgba(239,68,68,0.15)',
+                color: s.status === 'ok' ? '#4ade80' : s.status === 'warn' ? '#f59e0b' : '#ef4444',
+              }}>
+                {s.status === 'ok' ? '✓' : s.status === 'warn' ? '!' : '✗'}
+              </span>
+              <div className="flex-1 min-w-0">
+                <span className="text-white/80">{s.label}</span>
+                <span className="text-white/40 mr-2"> — {s.detail}</span>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function AdminTestPushButton({ onSent }: { onSent?: () => void }) {
+  const { language } = useLanguage();
+  const { isSubscribed, state: pushState, needsRepair, requestAndRegister, repairCurrentDevice } = usePushNotifications();
   const [testLoading, setTestLoading] = useState(false);
   const [testResult, setTestResult] = useState<any>(null);
   const [testError, setTestError] = useState<string | null>(null);
@@ -176,6 +428,7 @@ function AdminTestPushButton() {
         setTestError(TEST_PUSH_ERRORS[data.code] || data.error || TEST_PUSH_ERRORS.PUSH_SEND_FAILED);
       } else {
         setTestResult(data);
+        if (onSent) onSent();
       }
     } catch (err: any) {
       setTestError(err.message || TEST_PUSH_ERRORS.PUSH_SEND_FAILED);
