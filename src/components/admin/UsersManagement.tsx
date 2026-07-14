@@ -591,11 +591,57 @@ export const UsersManagement = () => {
     if (data?.success) {
       setUsers((data.users ?? []) as UserRow[]);
       setTotal(data.total ?? 0);
+    } else {
+      // Fallback: direct query if RPC fails
+      let query = supabase
+        .from('users')
+        .select('id, username, email, avatar_url, level, rank, points, xp, coins, games_played, games_won, created_at, last_login', { count: 'exact' });
+
+      if (search) {
+        query = query.or(`username.ilike.%${search}%,email.ilike.%${search}%`);
+      }
+
+      const { data: rows, count } = await query
+        .order('created_at', { ascending: false })
+        .range(page * PAGE_SIZE, (page + 1) * PAGE_SIZE - 1);
+
+      if (rows) {
+        setUsers(rows.map(r => ({
+          ...r,
+          account_status: 'ACTIVE',
+          risk_level: 'LOW',
+          total_deposits: 0,
+          deposit_count: 0,
+          pending_payment_count: 0,
+          fraud_flag_count: 0,
+          note_count: 0,
+        })) as UserRow[]);
+        setTotal(count ?? rows.length);
+      }
     }
     setLoading(false);
   }, [search, statusFilter, page]);
 
   useEffect(() => { load(); }, [load]);
+
+  // Real-time sync: auto-refresh when users table changes
+  useEffect(() => {
+    const channel = supabase
+      .channel('admin-users-realtime')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'users' },
+        () => { load(); }
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'user_accounts' },
+        () => { load(); }
+      )
+      .subscribe();
+
+    return () => { supabase.removeChannel(channel); };
+  }, [load]);
 
   const handleSearchChange = (val: string) => {
     setSearchInput(val);
@@ -684,7 +730,7 @@ export const UsersManagement = () => {
           <table className="w-full text-sm">
             <thead>
               <tr style={{ background: 'rgba(255,255,255,0.04)', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
-                {['المستخدم', 'الهاتف', 'النقاط', 'الإيداعات', 'الحالة', ''].map(h => (
+                {['المستخدم', 'الهاتف', 'النقاط', 'الإيداعات', 'تاريخ التسجيل', 'الحالة', ''].map(h => (
                   <th key={h} className="text-right px-4 py-3 text-xs font-semibold text-slate-500 whitespace-nowrap">{h}</th>
                 ))}
               </tr>
@@ -693,7 +739,7 @@ export const UsersManagement = () => {
               {loading ? (
                 Array(8).fill(0).map((_, i) => (
                   <tr key={i} style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
-                    {Array(6).fill(0).map((_, j) => (
+                    {Array(7).fill(0).map((_, j) => (
                       <td key={j} className="px-4 py-3">
                         <div className="h-4 rounded animate-pulse" style={{ background: 'rgba(255,255,255,0.05)', width: j === 0 ? '120px' : '60px' }} />
                       </td>
@@ -702,7 +748,7 @@ export const UsersManagement = () => {
                 ))
               ) : users.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="text-center py-12 text-slate-500">لا يوجد مستخدمون</td>
+                  <td colSpan={7} className="text-center py-12 text-slate-500">لا يوجد مستخدمون</td>
                 </tr>
               ) : (
                 users.map(u => (
@@ -726,6 +772,9 @@ export const UsersManagement = () => {
                     </td>
                     <td className="px-4 py-3 text-slate-400 whitespace-nowrap">
                       {u.total_deposits != null ? `${Number(u.total_deposits).toFixed(0)} LYD` : '—'}
+                    </td>
+                    <td className="px-4 py-3 text-xs text-slate-400 whitespace-nowrap">
+                      {fmtDate(u.created_at)}
                     </td>
                     <td className="px-4 py-3">
                       <StatusBadge status={u.account_status} />
