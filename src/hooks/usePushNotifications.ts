@@ -56,13 +56,21 @@ async function fetchVapidPublicKey(): Promise<string | null> {
   try {
     const url = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/get-push-config`;
     const resp = await fetch(url, {
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
+      },
     });
-    if (!resp.ok) return null;
+    if (!resp.ok) {
+      console.error('get-push-config HTTP error:', resp.status);
+      return null;
+    }
     const data = await resp.json();
     if (data?.success && data.publicKey) return data.publicKey;
+    console.error('get-push-config returned non-success:', data?.code || data);
     return null;
-  } catch {
+  } catch (err) {
+    console.error('get-push-config fetch failed:', err);
     return null;
   }
 }
