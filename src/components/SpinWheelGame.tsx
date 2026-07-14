@@ -807,6 +807,7 @@ export function SpinWheelGame({ onOpenMyPrizes, onNavigate }: { onOpenMyPrizes?:
   }
 
   const prizes = settings.prizes;
+  const activePrizes = prizes.filter(p => !(p as any).disabled && p.weight > 0);
   const n = prizes.length;
   const slice = 360 / n;
   const isBusy = gameState === 'spinning' || gameState === 'revealing';
@@ -889,7 +890,7 @@ export function SpinWheelGame({ onOpenMyPrizes, onNavigate }: { onOpenMyPrizes?:
                 )}
               </div>
               <div className="space-y-2 overflow-y-auto" style={{ maxHeight: 280 }}>
-                {prizes.filter(p => p.type !== 'miss').map(prize => {
+                {activePrizes.filter(p => p.type !== 'miss').map(prize => {
                   const rarity = rarityForPrize(prize);
                   const rColor = RARITY_COLORS[rarity] || '#d9ab4e';
                   const state = prizeStates.find(s => s.prize_id === prize.id);
@@ -1410,7 +1411,7 @@ export function SpinWheelGame({ onOpenMyPrizes, onNavigate }: { onOpenMyPrizes?:
           <div className="rounded-2xl p-4" style={{ background: '#181008', border: '1px solid rgba(214,178,94,.16)' }}>
             <h3 style={{ fontFamily: "'Lalezar', cursive", fontSize: 18, color: '#f8e7b4', marginBottom: 12 }}>🎁 {language === 'ar' ? 'الجوائز المتاحة' : 'Available Prizes'}</h3>
             <div className="grid grid-cols-1 gap-2.5">
-              {prizes.filter(p => p.type !== 'miss').map(prize => {
+              {activePrizes.filter(p => p.type !== 'miss').map(prize => {
                 const rarity = rarityForPrize(prize);
                 const rColor = RARITY_COLORS[rarity] || '#d9ab4e';
                 const state = prizeStates.find(s => s.prize_id === prize.id);
