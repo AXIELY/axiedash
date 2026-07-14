@@ -124,7 +124,7 @@ const TEST_PUSH_ERRORS: Record<string, string> = {
 
 function AdminTestPushButton() {
   const { language } = useLanguage();
-  const { isSubscribed, permissionState, requestPermission } = usePushNotifications();
+  const { isSubscribed, permissionState, requestPermission, repairSubscription } = usePushNotifications();
   const [testLoading, setTestLoading] = useState(false);
   const [testResult, setTestResult] = useState<any>(null);
   const [testError, setTestError] = useState<string | null>(null);
@@ -135,14 +135,17 @@ function AdminTestPushButton() {
     setTestError(null);
 
     try {
-      // If not subscribed, activate first
+      // If not subscribed, try to activate or repair
       if (!isSubscribed) {
         if (permissionState === 'DENIED') {
           setTestError(TEST_PUSH_ERRORS.PERMISSION_DENIED);
           setTestLoading(false);
           return;
         }
-        const ok = await requestPermission();
+        // If permission is granted but DB is out of sync, repair; otherwise request fresh
+        const ok = (permissionState === 'GRANTED' || permissionState === 'DB_REGISTRATION_FAILED')
+          ? await repairSubscription()
+          : await requestPermission();
         if (!ok) {
           setTestError(TEST_PUSH_ERRORS.NO_ACTIVE_SUBSCRIPTION);
           setTestLoading(false);

@@ -66,8 +66,10 @@ export function NotificationSettings({ onBack }: Props) {
     permissionState,
     isSubscribed,
     requestPermission,
+    repairSubscription,
     unsubscribe,
     loading: pushLoading,
+    error: pushError,
   } = usePushNotifications();
 
   const [preferences, setPreferences] = useState<Preferences[]>([]);
@@ -210,12 +212,12 @@ export function NotificationSettings({ onBack }: Props) {
           <div className="flex items-center gap-3">
             <div
               className="w-10 h-10 rounded-xl flex items-center justify-center"
-              style={{ background: isSubscribed ? 'rgba(74,222,128,0.12)' : 'rgba(214,180,123,0.08)' }}
+              style={{ background: isSubscribed ? 'rgba(74,222,128,0.12)' : permissionState === 'DB_REGISTRATION_FAILED' ? 'rgba(251,191,36,0.10)' : 'rgba(214,180,123,0.08)' }}
             >
               {isSubscribed ? (
                 <Bell className="w-5 h-5" style={{ color: '#4ade80' }} />
               ) : (
-                <BellOff className="w-5 h-5" style={{ color: 'var(--text-3)' }} />
+                <BellOff className="w-5 h-5" style={{ color: permissionState === 'DB_REGISTRATION_FAILED' ? '#fbbf24' : 'var(--text-3)' }} />
               )}
             </div>
             <div>
@@ -224,32 +226,60 @@ export function NotificationSettings({ onBack }: Props) {
               </p>
               <p className="text-[11px]" style={{ color: 'var(--text-3)' }}>
                 {isSubscribed
-                  ? (language === 'ar' ? 'مفعّلة على هذا الجهاز' : 'Active on this device')
+                  ? (language === 'ar' ? 'الإشعارات مفعلة على هذا الجهاز' : 'Active on this device')
                   : permissionState === 'DENIED'
-                    ? (language === 'ar' ? 'محظورة من إعدادات المتصفح' : 'Blocked in browser settings')
+                    ? (language === 'ar' ? 'الإشعارات محظورة من إعدادات المتصفح' : 'Blocked in browser settings')
                     : permissionState === 'NOT_INSTALLED_IOS'
                       ? (language === 'ar' ? 'أضف التطبيق للشاشة الرئيسية أولاً' : 'Add to Home Screen first')
-                      : (language === 'ar' ? 'غير مفعّلة' : 'Not enabled')}
+                      : permissionState === 'DB_REGISTRATION_FAILED'
+                        ? (language === 'ar' ? 'تم منح الإذن، لكن تعذر تسجيل هذا الجهاز' : 'Permission granted, but device registration failed')
+                        : permissionState === 'GRANTED'
+                          ? (language === 'ar' ? 'الإذن موجود، لكن هذا الجهاز غير مسجل' : 'Permission granted, device not registered')
+                          : (language === 'ar' ? 'الإشعارات غير مفعلة' : 'Not enabled')}
               </p>
             </div>
           </div>
-          {permissionState !== 'DENIED' && permissionState !== 'UNSUPPORTED' && permissionState !== 'NOT_INSTALLED_IOS' && (
-            <button
-              onClick={isSubscribed ? unsubscribe : requestPermission}
-              disabled={pushLoading}
-              className="px-4 py-2 rounded-lg text-xs font-bold transition-all"
-              style={{
-                background: isSubscribed ? 'rgba(239,68,68,0.08)' : 'var(--gold)',
-                color: isSubscribed ? '#ef4444' : '#0a0818',
-                border: isSubscribed ? '1px solid rgba(239,68,68,0.15)' : 'none',
-              }}
-            >
-              {pushLoading ? '...' : isSubscribed
-                ? (language === 'ar' ? 'إيقاف' : 'Disable')
-                : (language === 'ar' ? 'تفعيل' : 'Enable')}
-            </button>
-          )}
+          <div className="flex items-center gap-2">
+            {/* Repair button -- shown when permission exists but DB registration is missing */}
+            {!isSubscribed && (permissionState === 'GRANTED' || permissionState === 'DB_REGISTRATION_FAILED') && (
+              <button
+                onClick={repairSubscription}
+                disabled={pushLoading}
+                className="px-3 py-2 rounded-lg text-xs font-bold transition-all"
+                style={{
+                  background: 'rgba(251,191,36,0.12)',
+                  color: '#fbbf24',
+                  border: '1px solid rgba(251,191,36,0.2)',
+                }}
+              >
+                {pushLoading ? '...' : (language === 'ar' ? 'إعادة ربط' : 'Relink')}
+              </button>
+            )}
+            {permissionState !== 'DENIED' && permissionState !== 'UNSUPPORTED' && permissionState !== 'NOT_INSTALLED_IOS' && (
+              <button
+                onClick={isSubscribed ? unsubscribe : requestPermission}
+                disabled={pushLoading}
+                className="px-4 py-2 rounded-lg text-xs font-bold transition-all"
+                style={{
+                  background: isSubscribed ? 'rgba(239,68,68,0.08)' : 'var(--gold)',
+                  color: isSubscribed ? '#ef4444' : '#0a0818',
+                  border: isSubscribed ? '1px solid rgba(239,68,68,0.15)' : 'none',
+                }}
+              >
+                {pushLoading ? '...' : isSubscribed
+                  ? (language === 'ar' ? 'إيقاف' : 'Disable')
+                  : (language === 'ar' ? 'تفعيل' : 'Enable')}
+              </button>
+            )}
+          </div>
         </div>
+        {pushError && (
+          <p className="text-xs mt-1 px-1" style={{ color: '#f87171' }}>
+            {pushError === 'DB_REGISTRATION_FAILED'
+              ? (language === 'ar' ? 'تعذر تسجيل هذا الجهاز، انقر "إعادة ربط" للمحاولة مرة أخرى' : 'Device registration failed. Click "Relink" to retry.')
+              : pushError}
+          </p>
+        )}
       </div>
 
       {/* Active devices */}

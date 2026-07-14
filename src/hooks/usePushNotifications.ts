@@ -9,7 +9,8 @@ export type PushPermissionState =
   | 'GRANTED'
   | 'DENIED'
   | 'SUBSCRIBED'
-  | 'SUBSCRIPTION_FAILED';
+  | 'SUBSCRIPTION_FAILED'
+  | 'DB_REGISTRATION_FAILED';
 
 export interface PlatformInfo {
   isIOS: boolean;
@@ -74,7 +75,13 @@ export function usePushNotifications() {
   const [error, setError] = useState<string | null>(null);
   const subscriptionRef = useRef<PushSubscription | null>(null);
   const vapidKeyRef = useRef<string | null>(null);
+  const registrationAttemptedRef = useRef(false);
 
+  // Stable ref for user id so callbacks always see latest value
+  const userIdRef = useRef<string | null>(null);
+  userIdRef.current = user?.id ?? null;
+
+  // -- Platform detection (runs once) --
   useEffect(() => {
     const info = detectPlatform();
     setPlatform(info);
@@ -83,7 +90,6 @@ export function usePushNotifications() {
       setPermissionState('UNSUPPORTED');
       return;
     }
-
     if (info.isIOS && !info.isStandalone) {
       setPermissionState('NOT_INSTALLED_IOS');
       return;
@@ -92,13 +98,24 @@ export function usePushNotifications() {
     const perm = Notification.permission;
     if (perm === 'denied') {
       setPermissionState('DENIED');
-    } else if (perm === 'granted') {
-      checkExistingSubscription();
-    } else {
+    } else if (perm !== 'granted') {
       setPermissionState('DEFAULT');
     }
+    // If granted, we wait for the user-dependent effect below
   }, []);
 
+  // -- Re-run subscription check whenever user auth loads/changes --
+  useEffect(() => {
+    if (!user?.id) return;
+    if (permissionState === 'UNSUPPORTED' || permissionState === 'NOT_INSTALLED_IOS' || permissionState === 'DENIED') return;
+
+    const perm = Notification.permission;
+    if (perm === 'granted') {
+      syncSubscriptionState();
+    }
+  }, [user?.id]);
+
+  // -- SW message handler --
   useEffect(() => {
     if (!('serviceWorker' in navigator)) return;
     const handler = (event: MessageEvent) => {
@@ -116,28 +133,54 @@ export function usePushNotifications() {
     return () => navigator.serviceWorker.removeEventListener('message', handler);
   }, []);
 
-  const checkExistingSubscription = useCallback(async () => {
+  // Check browser subscription AND verify DB row exists
+  const syncSubscriptionState = useCallback(async () => {
+    const userId = userIdRef.current;
+    if (!userId) {
+      setPermissionState('GRANTED');
+      return;
+    }
+
     try {
       const reg = await navigator.serviceWorker.ready;
       const sub = await reg.pushManager.getSubscription();
-      if (sub) {
-        subscriptionRef.current = sub;
-        setPermissionState('SUBSCRIBED');
-        if (user?.id) {
-          await registerSubscriptionWithBackend(sub.toJSON());
-        }
-      } else {
+
+      if (!sub) {
+        subscriptionRef.current = null;
         setPermissionState('GRANTED');
+        return;
+      }
+
+      subscriptionRef.current = sub;
+
+      // Verify DB row exists for this endpoint + user
+      const endpoint = sub.endpoint;
+      const endpointHash = await sha256Hex(endpoint);
+
+      const { data: dbRow } = await supabase
+        .from('push_subscriptions')
+        .select('id, is_active, user_id')
+        .eq('endpoint_hash', endpointHash)
+        .maybeSingle();
+
+      if (dbRow && dbRow.is_active && dbRow.user_id === userId) {
+        setPermissionState('SUBSCRIBED');
+      } else {
+        // Browser has subscription but DB is missing/stale -- auto-repair
+        const ok = await registerSubscriptionWithBackend(sub.toJSON());
+        setPermissionState(ok ? 'SUBSCRIBED' : 'DB_REGISTRATION_FAILED');
       }
     } catch {
       setPermissionState('GRANTED');
     }
-  }, [user?.id]);
+  }, []);
 
-  const registerSubscriptionWithBackend = useCallback(async (subJson: any) => {
-    if (!user?.id) return;
+  const registerSubscriptionWithBackend = useCallback(async (subJson: any): Promise<boolean> => {
+    const userId = userIdRef.current;
+    if (!userId) return false;
+
     const info = detectPlatform();
-    const { error: rpcErr } = await supabase.rpc('register_push_subscription', {
+    const { data, error: rpcErr } = await supabase.rpc('register_push_subscription', {
       p_endpoint: subJson.endpoint,
       p_p256dh: subJson.keys?.p256dh ?? '',
       p_auth_key: subJson.keys?.auth ?? '',
@@ -147,10 +190,20 @@ export function usePushNotifications() {
       p_device_label: info.isIOS ? 'iPhone/iPad' : info.isAndroid ? 'Android' : 'Desktop',
       p_timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || null,
     });
+
     if (rpcErr) {
-      console.error('Push subscription registration failed:', rpcErr);
+      console.error('Push subscription registration failed:', rpcErr.message);
+      return false;
     }
-  }, [user?.id]);
+
+    // RPC returns jsonb -- check its success field
+    if (data && typeof data === 'object' && data.success === false) {
+      console.error('Push subscription registration rejected:', data.error);
+      return false;
+    }
+
+    return true;
+  }, []);
 
   const requestPermission = useCallback(async (): Promise<boolean> => {
     if (!platform.supportsSW || !platform.supportsPush || !platform.supportsNotification) {
@@ -178,26 +231,40 @@ export function usePushNotifications() {
 
       const reg = await navigator.serviceWorker.ready;
 
-      // Fetch VAPID public key from server
-      if (!vapidKeyRef.current) {
-        vapidKeyRef.current = await fetchVapidPublicKey();
+      // Check for existing browser subscription first
+      let sub = await reg.pushManager.getSubscription();
+
+      if (!sub) {
+        // Fetch VAPID public key from server
+        if (!vapidKeyRef.current) {
+          vapidKeyRef.current = await fetchVapidPublicKey();
+        }
+
+        const vapidKey = vapidKeyRef.current;
+        if (!vapidKey) {
+          setError('VAPID_NOT_CONFIGURED');
+          setPermissionState('SUBSCRIPTION_FAILED');
+          setLoading(false);
+          return false;
+        }
+
+        sub = await reg.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: urlBase64ToUint8Array(vapidKey),
+        });
       }
 
-      const vapidKey = vapidKeyRef.current;
-      if (!vapidKey) {
-        setError('VAPID_NOT_CONFIGURED');
-        setPermissionState('SUBSCRIPTION_FAILED');
+      subscriptionRef.current = sub;
+
+      // Register with DB -- MUST succeed before we show "enabled"
+      const ok = await registerSubscriptionWithBackend(sub.toJSON());
+      if (!ok) {
+        setError('DB_REGISTRATION_FAILED');
+        setPermissionState('DB_REGISTRATION_FAILED');
         setLoading(false);
         return false;
       }
 
-      const sub = await reg.pushManager.subscribe({
-        userVisibleOnly: true,
-        applicationServerKey: urlBase64ToUint8Array(vapidKey),
-      });
-
-      subscriptionRef.current = sub;
-      await registerSubscriptionWithBackend(sub.toJSON());
       setPermissionState('SUBSCRIBED');
       setLoading(false);
       return true;
@@ -209,6 +276,52 @@ export function usePushNotifications() {
       return false;
     }
   }, [platform, registerSubscriptionWithBackend]);
+
+  // Repair action: re-register existing browser subscription with DB
+  const repairSubscription = useCallback(async (): Promise<boolean> => {
+    setLoading(true);
+    setError(null);
+
+    try {
+      const reg = await navigator.serviceWorker.ready;
+      let sub = await reg.pushManager.getSubscription();
+
+      if (!sub) {
+        // Need to create browser subscription too
+        if (!vapidKeyRef.current) {
+          vapidKeyRef.current = await fetchVapidPublicKey();
+        }
+        const vapidKey = vapidKeyRef.current;
+        if (!vapidKey) {
+          setError('VAPID_NOT_CONFIGURED');
+          setLoading(false);
+          return false;
+        }
+
+        sub = await reg.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: urlBase64ToUint8Array(vapidKey),
+        });
+      }
+
+      subscriptionRef.current = sub;
+      const ok = await registerSubscriptionWithBackend(sub.toJSON());
+      if (!ok) {
+        setError('DB_REGISTRATION_FAILED');
+        setPermissionState('DB_REGISTRATION_FAILED');
+        setLoading(false);
+        return false;
+      }
+
+      setPermissionState('SUBSCRIBED');
+      setLoading(false);
+      return true;
+    } catch (err: any) {
+      setError(err.message || 'Failed to repair subscription');
+      setLoading(false);
+      return false;
+    }
+  }, [registerSubscriptionWithBackend]);
 
   const unsubscribe = useCallback(async () => {
     try {
@@ -237,8 +350,16 @@ export function usePushNotifications() {
     loading,
     error,
     requestPermission,
+    repairSubscription,
     unsubscribe,
     deactivateForLogout,
     isSubscribed: permissionState === 'SUBSCRIBED',
   };
+}
+
+async function sha256Hex(input: string): Promise<string> {
+  const data = new TextEncoder().encode(input);
+  const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
 }
