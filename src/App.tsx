@@ -5,6 +5,7 @@ import { Login } from './pages/Login';
 import { Dashboard } from './pages/Dashboard';
 import { AdminDashboard } from './pages/AdminDashboard';
 import { useAdmin } from './hooks/useAdmin';
+import { PushPermissionCoordinator } from './components/PushPermissionCoordinator';
 import { Ban, Clock, LogOut, Crown } from 'lucide-react';
 
 function BlockedScreen({ status, reason, signOut }: { status: AccountStatus; reason?: string | null; signOut: () => void }) {
@@ -121,8 +122,18 @@ function AppContent() {
     return <BlockedScreen status={accountStatus} reason={reason} signOut={signOut} />;
   }
 
-  if (currentRoute === 'admin' && isAdmin) return <AdminDashboard />;
-  return <Dashboard />;
+  if (currentRoute === 'admin' && isAdmin) return (
+    <>
+      <AdminDashboard />
+      <PushPermissionCoordinator />
+    </>
+  );
+  return (
+    <>
+      <Dashboard />
+      <PushPermissionCoordinator />
+    </>
+  );
 }
 
 function App() {

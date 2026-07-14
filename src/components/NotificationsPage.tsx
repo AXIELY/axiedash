@@ -87,9 +87,8 @@ export function NotificationsPage({ onNavigate }: Props) {
   } = useNotifications(20);
 
   const {
-    platform,
-    permissionState,
-    requestPermission,
+    state: pushState,
+    requestAndRegister,
     isSubscribed,
     loading: pushLoading,
   } = usePushNotifications();
@@ -114,11 +113,13 @@ export function NotificationsPage({ onNavigate }: Props) {
   const needsPushSetup =
     showPushBanner &&
     !isSubscribed &&
-    permissionState !== 'DENIED' &&
-    permissionState !== 'UNSUPPORTED';
+    pushState !== 'PERMISSION_DENIED' &&
+    pushState !== 'UNSUPPORTED' &&
+    pushState !== 'IOS_REQUIRES_INSTALL' &&
+    pushState !== 'IOS_VERSION_UNSUPPORTED';
 
   const handlePushEnable = async () => {
-    await requestPermission();
+    await requestAndRegister();
   };
 
   return (
@@ -183,12 +184,12 @@ export function NotificationsPage({ onNavigate }: Props) {
           </div>
           <div className="flex-1 min-w-0">
             <p className="text-sm font-semibold" style={{ color: 'var(--text-1)' }}>
-              {permissionState === 'NOT_INSTALLED_IOS'
+              {pushState === 'IOS_REQUIRES_INSTALL'
                 ? (language === 'ar' ? 'أضف التطبيق للشاشة الرئيسية' : 'Add to Home Screen')
                 : (language === 'ar' ? 'تفعيل الإشعارات الفورية' : 'Enable Push Notifications')}
             </p>
             <p className="text-[11px] mt-0.5" style={{ color: 'var(--text-3)' }}>
-              {permissionState === 'NOT_INSTALLED_IOS'
+              {pushState === 'IOS_REQUIRES_INSTALL'
                 ? (language === 'ar'
                   ? 'اضغط على "مشاركة" ثم "إضافة للشاشة الرئيسية" لتفعيل الإشعارات'
                   : 'Tap Share then "Add to Home Screen" to enable notifications')
@@ -197,7 +198,7 @@ export function NotificationsPage({ onNavigate }: Props) {
                   : 'Get instant alerts for payments, prizes, and services')}
             </p>
           </div>
-          {permissionState !== 'NOT_INSTALLED_IOS' && (
+          {pushState !== 'IOS_REQUIRES_INSTALL' && (
             <button
               onClick={handlePushEnable}
               disabled={pushLoading}

@@ -63,13 +63,18 @@ export function NotificationSettings({ onBack }: Props) {
   const { user } = useAuth();
   const {
     platform,
-    permissionState,
+    state: pushState,
     isSubscribed,
-    requestPermission,
-    repairSubscription,
-    unsubscribe,
+    needsRepair,
+    isSupported,
+    requestAndRegister,
+    repairCurrentDevice,
+    deactivateCurrentDevice,
+    refreshStatus,
     loading: pushLoading,
-    error: pushError,
+    errorCode: pushErrorCode,
+    errorMessage: pushErrorMessage,
+    diagnostics: pushDiagnostics,
   } = usePushNotifications();
 
   const [preferences, setPreferences] = useState<Preferences[]>([]);
@@ -212,12 +217,12 @@ export function NotificationSettings({ onBack }: Props) {
           <div className="flex items-center gap-3">
             <div
               className="w-10 h-10 rounded-xl flex items-center justify-center"
-              style={{ background: isSubscribed ? 'rgba(74,222,128,0.12)' : permissionState === 'DB_REGISTRATION_FAILED' ? 'rgba(251,191,36,0.10)' : 'rgba(214,180,123,0.08)' }}
+              style={{ background: isSubscribed ? 'rgba(74,222,128,0.12)' : needsRepair ? 'rgba(251,191,36,0.10)' : 'rgba(214,180,123,0.08)' }}
             >
               {isSubscribed ? (
                 <Bell className="w-5 h-5" style={{ color: '#4ade80' }} />
               ) : (
-                <BellOff className="w-5 h-5" style={{ color: permissionState === 'DB_REGISTRATION_FAILED' ? '#fbbf24' : 'var(--text-3)' }} />
+                <BellOff className="w-5 h-5" style={{ color: needsRepair ? '#fbbf24' : 'var(--text-3)' }} />
               )}
             </div>
             <div>
@@ -227,23 +232,35 @@ export function NotificationSettings({ onBack }: Props) {
               <p className="text-[11px]" style={{ color: 'var(--text-3)' }}>
                 {isSubscribed
                   ? (language === 'ar' ? 'الإشعارات مفعلة على هذا الجهاز' : 'Active on this device')
-                  : permissionState === 'DENIED'
+                  : pushState === 'PERMISSION_DENIED'
                     ? (language === 'ar' ? 'الإشعارات محظورة من إعدادات المتصفح' : 'Blocked in browser settings')
-                    : permissionState === 'NOT_INSTALLED_IOS'
+                    : pushState === 'IOS_REQUIRES_INSTALL'
                       ? (language === 'ar' ? 'أضف التطبيق للشاشة الرئيسية أولاً' : 'Add to Home Screen first')
-                      : permissionState === 'DB_REGISTRATION_FAILED'
-                        ? (language === 'ar' ? 'تم منح الإذن، لكن تعذر تسجيل هذا الجهاز' : 'Permission granted, but device registration failed')
-                        : permissionState === 'GRANTED'
-                          ? (language === 'ar' ? 'الإذن موجود، لكن هذا الجهاز غير مسجل' : 'Permission granted, device not registered')
-                          : (language === 'ar' ? 'الإشعارات غير مفعلة' : 'Not enabled')}
+                      : pushState === 'IOS_VERSION_UNSUPPORTED'
+                        ? (language === 'ar' ? 'هذا الإصدار لا يدعم الإشعارات' : 'This version does not support notifications')
+                        : pushState === 'UNSUPPORTED'
+                          ? (language === 'ar' ? 'غير مدعوم على هذا المتصفح' : 'Not supported on this browser')
+                          : pushState === 'PERMISSION_GRANTED_NO_BROWSER_SUBSCRIPTION'
+                            ? (language === 'ar' ? 'الإذن موجود، لكن هذا الجهاز غير مسجل' : 'Permission granted, device not registered')
+                            : pushState === 'BROWSER_SUBSCRIPTION_NOT_REGISTERED'
+                              ? (language === 'ar' ? 'هذا الجهاز غير مرتبط بحسابك' : 'This device is not linked to your account')
+                              : pushState === 'DATABASE_SUBSCRIPTION_INACTIVE'
+                                ? (language === 'ar' ? 'تم إيقاف الإشعارات على هذا الجهاز' : 'Notifications disabled on this device')
+                                : pushState === 'REPAIR_REQUIRED'
+                                  ? (language === 'ar' ? 'تم منح الإذن، لكن تعذر تسجيل هذا الجهاز' : 'Permission granted, but device registration failed')
+                                  : pushState === 'PERMISSION_DEFAULT'
+                                    ? (language === 'ar' ? 'الإشعارات غير مفعلة' : 'Not enabled')
+                                    : pushState === 'INITIALIZING'
+                                      ? (language === 'ar' ? 'جارٍ الفحص...' : 'Checking...')
+                                      : (language === 'ar' ? 'الإشعارات غير مفعلة' : 'Not enabled')}
               </p>
             </div>
           </div>
           <div className="flex items-center gap-2">
             {/* Repair button -- shown when permission exists but DB registration is missing */}
-            {!isSubscribed && (permissionState === 'GRANTED' || permissionState === 'DB_REGISTRATION_FAILED') && (
+            {!isSubscribed && needsRepair && (
               <button
-                onClick={repairSubscription}
+                onClick={repairCurrentDevice}
                 disabled={pushLoading}
                 className="px-3 py-2 rounded-lg text-xs font-bold transition-all"
                 style={{
@@ -255,9 +272,9 @@ export function NotificationSettings({ onBack }: Props) {
                 {pushLoading ? '...' : (language === 'ar' ? 'إعادة ربط' : 'Relink')}
               </button>
             )}
-            {permissionState !== 'DENIED' && permissionState !== 'UNSUPPORTED' && permissionState !== 'NOT_INSTALLED_IOS' && (
+            {isSupported && pushState !== 'PERMISSION_DENIED' && pushState !== 'IOS_REQUIRES_INSTALL' && pushState !== 'IOS_VERSION_UNSUPPORTED' && (
               <button
-                onClick={isSubscribed ? unsubscribe : requestPermission}
+                onClick={isSubscribed ? deactivateCurrentDevice : requestAndRegister}
                 disabled={pushLoading}
                 className="px-4 py-2 rounded-lg text-xs font-bold transition-all"
                 style={{
@@ -273,11 +290,9 @@ export function NotificationSettings({ onBack }: Props) {
             )}
           </div>
         </div>
-        {pushError && (
+        {pushErrorMessage && (
           <p className="text-xs mt-1 px-1" style={{ color: '#f87171' }}>
-            {pushError === 'DB_REGISTRATION_FAILED'
-              ? (language === 'ar' ? 'تعذر تسجيل هذا الجهاز، انقر "إعادة ربط" للمحاولة مرة أخرى' : 'Device registration failed. Click "Relink" to retry.')
-              : pushError}
+            {pushErrorMessage}
           </p>
         )}
       </div>

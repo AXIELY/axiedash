@@ -1,6 +1,15 @@
 // AXIE Platform Service Worker — Push Notifications
 // Do NOT add aggressive caching — Vite handles assets via hashed filenames
 
+// ── Helpers ─────────────────────────────────────────────────────
+
+function urlBase64ToUint8Array(base64String) {
+  const padding = '='.repeat((4 - base64String.length % 4) % 4);
+  const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+  const rawData = atob(base64);
+  return Uint8Array.from([...rawData].map(c => c.charCodeAt(0)));
+}
+
 const ALLOWED_DEEP_LINK_PATTERNS = [
   /^\/$/,
   /^\/orders\//,
@@ -109,19 +118,48 @@ self.addEventListener('notificationclick', (event) => {
 // ── Subscription change ─────────────────────────────────────────
 self.addEventListener('pushsubscriptionchange', (event) => {
   event.waitUntil(
-    self.registration.pushManager.subscribe(event.oldSubscription?.options || {
-      userVisibleOnly: true,
-    }).then((newSub) => {
-      // Notify any open client to re-register with backend
-      return self.clients.matchAll({ type: 'window' }).then((clients) => {
+    (async () => {
+      try {
+        // Fetch VAPID public key from server so re-subscription uses correct key
+        const configResp = await fetch(
+          (self.location.origin || '') + '/functions/v1/get-push-config',
+          { headers: { 'Content-Type': 'application/json' } }
+        ).catch(() => null);
+
+        let applicationServerKey = undefined;
+        if (configResp && configResp.ok) {
+          const config = await configResp.json().catch(() => ({}));
+          if (config?.success && config.publicKey) {
+            applicationServerKey = urlBase64ToUint8Array(config.publicKey);
+          }
+        }
+
+        const subscribeOptions = event.oldSubscription?.options || { userVisibleOnly: true };
+        if (applicationServerKey) {
+          subscribeOptions.applicationServerKey = applicationServerKey;
+        }
+
+        const newSub = await self.registration.pushManager.subscribe(subscribeOptions);
+
+        // Notify any open client to re-register with backend
+        const clients = await self.clients.matchAll({ type: 'window' });
         clients.forEach((client) => {
           client.postMessage({
             type: 'PUSH_SUBSCRIPTION_CHANGED',
             subscription: newSub.toJSON(),
           });
         });
-      });
-    }).catch(() => {})
+      } catch (err) {
+        // If re-subscription fails, notify clients so they can retry from the page
+        const clients = await self.clients.matchAll({ type: 'window' });
+        clients.forEach((client) => {
+          client.postMessage({
+            type: 'PUSH_SUBSCRIPTION_CHANGE_FAILED',
+            error: err instanceof Error ? err.message : String(err),
+          });
+        });
+      }
+    })()
   );
 });
 
