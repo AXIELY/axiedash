@@ -247,17 +247,15 @@ export function useSpinWheelGame() {
     }
 
     const result = data as {
-      quantity: number;
+      spin_count: number;
       results: SpinResultEntry[];
-      points_awarded: number;
-      points_deducted: number;
-      spin_request_id: string;
-      probability_version_id: string;
-      unlocked_grand_prize_ids: string[];
-      batch_request_id: string;
-      recovered?: boolean;
+      cost: number;
       balance_before?: number;
       balance_after?: number;
+      batch_id?: string;
+      client_request_id: string;
+      probability_version_id: string;
+      recovered?: boolean;
       progress?: {
         before: number;
         after: number;
@@ -267,6 +265,11 @@ export function useSpinWheelGame() {
         unlocked_during_batch_at: number | null;
       };
     };
+    // Map server response to the shape the rest of the hook expects
+    const mappedQuantity = result.spin_count || 1;
+    const mappedPointsDeducted = result.cost || 0;
+    const mappedPointsAwarded = (result.results || []).reduce((s, r) => s + (r.points_awarded || 0), 0);
+    const mappedSpinRequestId = result.batch_id || result.client_request_id;
 
     const allResults: Array<{ prizeIndex: number; prize: WheelPrize; fallbackUsed?: boolean; originalPrizeId?: string }> = [];
     for (const r of result.results || []) {
@@ -294,12 +297,12 @@ export function useSpinWheelGame() {
     pendingServerResult.current = {
       prizeIndex: finalPrizeIndex >= 0 ? finalPrizeIndex : (lastResult?.prize_index ?? 0),
       prize,
-      spinRequestId: result.spin_request_id,
-      pointsAwarded: result.points_awarded,
-      pointsDeducted: result.points_deducted,
-      quantity: result.quantity,
+      spinRequestId: mappedSpinRequestId,
+      pointsAwarded: mappedPointsAwarded,
+      pointsDeducted: mappedPointsDeducted,
+      quantity: mappedQuantity,
       allResults,
-      unlockedGrandPrizeIds: result.unlocked_grand_prize_ids || [],
+      unlockedGrandPrizeIds: [],
       progress: result.progress,
       balanceAfter: result.balance_after,
     };
@@ -308,15 +311,18 @@ export function useSpinWheelGame() {
       setError(null);
     }
 
+    // Refresh user balance immediately after server confirms deduction
+    refreshUser();
+
     return {
       prizeIndex: finalPrizeIndex >= 0 ? finalPrizeIndex : (lastResult?.prize_index ?? 0),
       prize,
       allResults,
-      quantity: result.quantity,
+      quantity: mappedQuantity,
       progress: result.progress,
       balanceAfter: result.balance_after,
     };
-  }, [user, settings, spinning, spinsToday]);
+  }, [user, settings, spinning, spinsToday, refreshUser]);
 
   const commitSpin = useCallback(async (_prize: WheelPrize) => {
     if (!user) return;
