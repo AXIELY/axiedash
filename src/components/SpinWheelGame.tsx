@@ -143,48 +143,57 @@ function PrizeBadge({
   );
 }
 
-// ─── SVG badge for wheel segments ──────────────────────────────────────────────
-function badgeSvgHtml(prize: WheelPrize, size = 44): string {
+// ─── SVG medallion for wheel segments ───────────────────────────────────────────
+function badgeSvgHtml(prize: WheelPrize, size = 78): string {
   const rarity = rarityForPrize(prize);
   const glow = prize.glow_color || RARITY_COLORS[rarity] || '#d9ab4e';
-  const scale = prize.icon_scale || 1;
+  const userScale = prize.icon_scale || 1;
   const s = size;
-  const ringW = 3;
-  const innerR = s / 2 - ringW;
-  const pad = s * 0.10;
-  const imgSize = (innerR - pad) * 2 * scale;
+  const outerR = s / 2;
+  const rimW = s * 0.06;
+  const innerR = outerR - rimW;
+  const artPad = s * 0.04;
+  const clipR = innerR - artPad;
+  const artSize = clipR * 2 * Math.min(Math.max(userScale, 1.0), 1.25);
   const uid = prize.id.replace(/[^a-zA-Z0-9_]/g, '_');
+  const isGrand = prize.type === 'grand';
+  const isRare = rarity === 'rare' || rarity === 'epic';
+  const pulseClass = isGrand ? 'aw-med-grand-pulse' : isRare ? 'aw-med-rare-pulse' : '';
 
-  const innerBg = `<circle r="${innerR}" fill="url(#aw-badge-bg)"/>`;
-  const glassHi = `<ellipse cx="${-innerR * 0.2}" cy="${-innerR * 0.45}" rx="${innerR * 0.55}" ry="${innerR * 0.32}" fill="rgba(255,255,255,0.18)"/>`;
+  const rimFill = isGrand ? 'url(#aw-rimGrand)' : 'url(#aw-badgeRing)';
+  const innerBgFill = isGrand ? '#1a0e04' : '#160d04';
+  const glowOpacity = isGrand ? 0.6 : isRare ? 0.4 : 0.2;
+  const glowBlur = isGrand ? 6 : isRare ? 4 : 2.5;
 
   let content: string;
   if (prize.primary_icon_url) {
-    content = `<clipPath id="aw-bc-${uid}"><circle r="${innerR - pad}"/></clipPath><image href="${prize.primary_icon_url}" x="${-imgSize/2}" y="${-imgSize/2}" width="${imgSize}" height="${imgSize}" preserveAspectRatio="xMidYMid meet" clip-path="url(#aw-bc-${uid})"/>`;
+    content = `<clipPath id="aw-mc-${uid}"><circle r="${clipR}"/></clipPath><image href="${prize.primary_icon_url}" x="${-artSize/2}" y="${-artSize/2}" width="${artSize}" height="${artSize}" preserveAspectRatio="xMidYMid meet" clip-path="url(#aw-mc-${uid})"/>`;
   } else {
     const c = glow;
-    content = `<text y="${s*0.14}" text-anchor="middle" font-family="'Lalezar',cursive" font-size="${s*0.44}" fill="${c}" style="filter:drop-shadow(0 0 6px ${c})">${(prize.name_ar || '?').charAt(0)}</text>`;
+    content = `<text y="${s*0.16}" text-anchor="middle" font-family="'Lalezar',cursive" font-size="${s*0.42}" fill="${c}" style="filter:drop-shadow(0 0 8px ${c})">${(prize.name_ar || '?').charAt(0)}</text>`;
   }
 
   return `
-    <g filter="url(#aw-iconGlow-${uid})" class="aw-badge-pulse">
+    <g class="${pulseClass}">
       <defs>
-        <filter id="aw-iconGlow-${uid}" x="-50%" y="-50%" width="200%" height="200%">
-          <feGaussianBlur in="SourceGraphic" stdDeviation="3" result="blur"/>
-          <feFlood flood-color="${glow}" flood-opacity="0.5" result="color"/>
+        <radialGradient id="aw-rimGrand-${uid}" cx="35%" cy="28%">
+          <stop offset="0%" stop-color="#ffdf88"/><stop offset="40%" stop-color="#d9ab4e"/><stop offset="80%" stop-color="#7c5a13"/><stop offset="100%" stop-color="#cfa04a"/>
+        </radialGradient>
+        <filter id="aw-glow-${uid}" x="-60%" y="-60%" width="220%" height="220%">
+          <feGaussianBlur in="SourceGraphic" stdDeviation="${glowBlur}" result="blur"/>
+          <feFlood flood-color="${glow}" flood-opacity="${glowOpacity}" result="color"/>
           <feComposite in="color" in2="blur" operator="in" result="glow"/>
           <feMerge><feMergeNode in="glow"/><feMergeNode in="SourceGraphic"/></feMerge>
         </filter>
       </defs>
-      <circle r="${s/2 + 2}" fill="none" stroke="${glow}" stroke-width="1" opacity="0.35">
-        <animate attributeName="r" values="${s/2 + 1};${s/2 + 4};${s/2 + 1}" dur="2.5s" repeatCount="indefinite"/>
-        <animate attributeName="opacity" values="0.35;0.15;0.35" dur="2.5s" repeatCount="indefinite"/>
-      </circle>
-      <circle r="${s/2}" fill="url(#aw-badgeRing)" stroke="${glow}" stroke-width="1" opacity="0.95"/>
-      <circle r="${s/2}" fill="none" stroke="${glow}" stroke-width="0.6" opacity="0.5" style="filter:drop-shadow(0 0 5px ${glow})"/>
-      ${innerBg}
-      ${glassHi}
-      ${content}
+      <circle r="${outerR + 3}" fill="none" stroke="${glow}" stroke-width="1.5" opacity="0.25" style="filter:blur(3px)"/>
+      <circle r="${outerR}" fill="${rimFill}" stroke="${glow}" stroke-width="0.8" opacity="0.9"/>
+      <circle r="${outerR - 1}" fill="none" stroke="rgba(255,255,255,0.15)" stroke-width="0.5"/>
+      <circle r="${innerR}" fill="${innerBgFill}"/>
+      <circle r="${innerR}" fill="url(#aw-badge-bg)" opacity="0.5"/>
+      <ellipse cx="${-innerR * 0.22}" cy="${-innerR * 0.4}" rx="${innerR * 0.5}" ry="${innerR * 0.28}" fill="rgba(255,255,255,0.08)"/>
+      <g filter="url(#aw-glow-${uid})">${content}</g>
+      <circle r="${innerR}" fill="none" stroke="rgba(0,0,0,0.3)" stroke-width="1"/>
     </g>
   `;
 }
@@ -349,6 +358,10 @@ function injectStyles() {
     @keyframes aw-lock-bob { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-4px); } }
     @keyframes aw-chain-spin { to { stroke-dashoffset: -52; } }
     @keyframes aw-lock-pulse { 0%,100% { transform: scale(1); } 50% { transform: scale(1.14); } }
+    @keyframes aw-med-grand-pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.85; } }
+    @keyframes aw-med-rare-pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.92; } }
+    .aw-med-grand-pulse { animation: aw-med-grand-pulse 3s ease-in-out infinite; }
+    .aw-med-rare-pulse { animation: aw-med-rare-pulse 4s ease-in-out infinite; }
     @keyframes aw-aura-pulse { 0%,100% { opacity: .25; } 50% { opacity: .85; } }
     @keyframes aw-open-glow { 0%,100% { opacity: .35; } 50% { opacity: 1; } }
     @keyframes aw-cta-blink { 0%,100% { opacity: 1; } 50% { opacity: .55; } }
@@ -1029,6 +1042,9 @@ export function SpinWheelGame({ onOpenMyPrizes, onNavigate }: { onOpenMyPrizes?:
                   <linearGradient id="aw-badgeRing" x1="0" y1="0" x2="1" y2="1">
                     <stop offset="0" stopColor="#f8e7b4" /><stop offset=".5" stopColor="#d9ab4e" /><stop offset="1" stopColor="#9a7220" />
                   </linearGradient>
+                  <radialGradient id="aw-rimGrand" cx="35%" cy="28%">
+                    <stop offset="0%" stopColor="#ffdf88" /><stop offset="40%" stopColor="#d9ab4e" /><stop offset="80%" stopColor="#7c5a13" /><stop offset="100%" stopColor="#cfa04a" />
+                  </radialGradient>
                 </defs>
 
                 {/* Outer gold ring (wide) */}
@@ -1046,16 +1062,19 @@ export function SpinWheelGame({ onOpenMyPrizes, onNavigate }: { onOpenMyPrizes?:
                     const [x0, y0] = polar(a0, R);
                     const [x1, y1] = polar(a1, R);
                     const mid = a0 + sliceSize / 2;
-                    const [tx, ty] = polar(mid, 158);
                     const isGrand = prize.type === 'grand';
+                    const medSize = isGrand ? 92 : 78;
+                    const medRadius = isGrand ? 152 : 158;
+                    const [tx, ty] = polar(mid, medRadius);
                     const largeArc = sliceSize > 180 ? 1 : 0;
                     const fill = isGrand ? 'url(#aw-jack)' : prize.type === 'coins' ? 'url(#aw-coins)' : prize.type === 'miss' ? 'url(#aw-brown)' : i % 2 === 0 ? 'url(#aw-cream)' : 'url(#aw-brown)';
                     const textColor = isGrand ? '#241705' : prize.type === 'coins' ? '#31d8c5' : prize.type === 'miss' ? '#f8e7b4' : i % 2 === 0 ? '#241705' : '#f8e7b4';
-                    const label = prize.short_label || (prize.name_ar.length > 6 ? prize.name_ar.slice(0, 6) : prize.name_ar);
+                    const label = prize.short_label || (prize.name_ar.length > 5 ? prize.name_ar.slice(0, 5) : prize.name_ar);
                     const subText = prize.type === 'points' ? 'نقطة' : prize.type === 'miss' ? 'حظ أوفر' : prize.type === 'grand' ? 'الكبرى' : prize.type === 'coins' ? 'عملات' : 'خدمة';
                     const midNormalized = ((mid % 360) + 360) % 360;
                     const needsFlip = midNormalized > 90 && midNormalized < 270;
                     const isWinner = winningIndex === i;
+                    const labelOffset = medSize / 2 + 14;
                     return (
                       <g key={prize.id} className={isWinner ? 'aw-seg-winner' : ''}>
                         <path d={`M${CX} ${CY} L${x0} ${y0} A${R} ${R} 0 ${largeArc} 1 ${x1} ${y1} Z`}
@@ -1066,11 +1085,11 @@ export function SpinWheelGame({ onOpenMyPrizes, onNavigate }: { onOpenMyPrizes?:
                         <circle cx={x0} cy={y0} r="3" fill="url(#aw-badgeRing)" stroke="rgba(0,0,0,.3)" strokeWidth="0.5" />
                         <g transform={`translate(${tx},${ty}) rotate(${mid})`}>
                           <g transform={needsFlip ? 'rotate(180)' : ''}>
-                            <g transform="translate(0,-30)" dangerouslySetInnerHTML={{ __html: badgeSvgHtml(prize, isGrand ? 52 : 46) }} />
-                            <text y={needsFlip ? -2 : 22} textAnchor="middle" fontFamily="'Lalezar', cursive"
-                              fontSize={label.length > 4 ? 14 : 17} fill={textColor} style={{ filter: isGrand ? `drop-shadow(0 0 4px ${textColor})` : undefined }}>{label}</text>
-                            {subText && <text y={needsFlip ? -16 : 36} textAnchor="middle" fontFamily="'Tajawal', sans-serif"
-                              fontWeight="700" fontSize="10" fill={textColor} opacity=".75">{subText}</text>}
+                            <g dangerouslySetInnerHTML={{ __html: badgeSvgHtml(prize, medSize) }} />
+                            <text y={needsFlip ? -labelOffset : labelOffset} textAnchor="middle" fontFamily="'Lalezar', cursive"
+                              fontSize={label.length > 4 ? 13 : 15} fill={textColor} style={{ filter: isGrand ? `drop-shadow(0 0 4px ${textColor})` : `drop-shadow(0 1px 2px rgba(0,0,0,.6))` }}>{label}</text>
+                            {subText && <text y={needsFlip ? -(labelOffset + 14) : labelOffset + 14} textAnchor="middle" fontFamily="'Tajawal', sans-serif"
+                              fontWeight="700" fontSize="9" fill={textColor} opacity=".7">{subText}</text>}
                           </g>
                         </g>
                       </g>
