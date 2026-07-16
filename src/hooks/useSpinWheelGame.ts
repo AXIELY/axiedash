@@ -223,14 +223,14 @@ export function useSpinWheelGame() {
 
     const { data, error: rpcErr } = await supabase.rpc('perform_spin_batch', {
       p_spin_count: quantity,
-      p_request_id: clientRequestId,
+      p_client_request_id: clientRequestId,
       p_payment_mode: paymentMode,
     });
 
     if (rpcErr || !data?.success) {
       const errCode = data?.error ?? rpcErr?.message ?? 'unknown';
       const errorMessages: Record<string, string> = {
-        insufficient_points: `نقاطك غير كافية. تحتاج ${data?.required ?? quantity === 5 ? settings.five_spin_cost : quantity === 10 ? settings.ten_spin_cost : settings.single_spin_cost} نقطة.`,
+        insufficient_points: `نقاطك غير كافية. تحتاج ${data?.required ?? (quantity === 5 ? settings.five_spin_cost : quantity === 10 ? settings.ten_spin_cost : settings.single_spin_cost)} نقطة.`,
         five_spin_disabled: 'خيار 5 لفات غير متاح حالياً.',
         ten_spin_disabled: 'خيار 10 لفات غير متاح حالياً.',
         no_published_version: 'تكوين العجلة غير جاهز. يرجى المحاولة لاحقاً.',
@@ -238,6 +238,8 @@ export function useSpinWheelGame() {
         invalid_spin_count: 'عدد اللفات غير صالح.',
         invalid_probability_config: 'إعدادات الاحتمالات غير صحيحة.',
         not_authenticated: 'يجب تسجيل الدخول أولاً.',
+        batch_already_processing: 'يوجد سحب قيد المعالجة. يرجى الانتظار.',
+        batch_failed: 'فشل السحب السابق. يرجى المحاولة مرة أخرى.',
       };
       setError(errorMessages[errCode] || `حدث خطأ: ${errCode}`);
       setSpinning(false);
