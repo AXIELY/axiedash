@@ -213,6 +213,7 @@ interface FormState {
   type: string;
   accent_color: string;
   weight: number;
+  probability_bp: number;
   value: string;
   short_label: string;
   is_strong: boolean;
@@ -259,6 +260,7 @@ function PrizeEditor({ prize, totalWeight, allPrizes, onSave, onClose, language,
     type:                 prize.type                 ?? 'points',
     accent_color:         prize.accent_color         ?? '#22d3ee',
     weight:               prize.weight               ?? 5,
+    probability_bp:       (prize as any).probability_bp ?? 0,
     value:                prize.value                ?? '',
     short_label:          prize.short_label          ?? '',
     is_strong:            prize.is_strong            ?? false,
@@ -702,16 +704,28 @@ function PrizeEditor({ prize, totalWeight, allPrizes, onSave, onClose, language,
             <div>
               <div style={SECTION_TITLE}>{isAr ? 'الاحتمالية' : 'Probability'}</div>
               <label style={LABEL} className="flex items-center justify-between">
-                <span>{isAr ? 'الوزن' : 'Weight'}</span>
-                <span style={{ color: '#fbbf24', fontFamily: 'monospace' }}>
-                  ~ {livePct.toFixed(2)}%
+                <span>{isAr ? 'نقاط الأساس (bp)' : 'Basis Points (bp)'}</span>
+                <span style={{ color: '#22d3ee', fontFamily: 'monospace' }}>
+                  {form.probability_bp} bp = {(form.probability_bp / 100).toFixed(2)}%
                 </span>
               </label>
-              <input type="number" style={INPUT} value={form.weight} min={0.01} step={0.01}
-                onChange={e => set('weight', parseFloat(e.target.value) || 0)} />
+              <input type="number" style={INPUT} value={form.probability_bp} min={0} max={10000} step={1}
+                onChange={e => set('probability_bp', parseInt(e.target.value) || 0)} />
+              <p className="text-[10px] mt-1 text-white/30">{isAr ? '1 bp = 0.01%. المجموع يجب أن يساوي 10,000' : '1 bp = 0.01%. Total across all prizes must equal 10,000'}</p>
               <div className="mt-3 h-2 rounded-full overflow-hidden" style={{ background: 'rgba(255,255,255,0.05)' }}>
                 <div className="h-full rounded-full transition-all duration-300"
-                  style={{ width: `${Math.min(livePct, 100)}%`, background: form.accent_color }} />
+                  style={{ width: `${Math.min(form.probability_bp / 100, 100)}%`, background: form.accent_color }} />
+              </div>
+
+              <div style={{ marginTop: '12px', borderTop: '1px solid rgba(255,255,255,0.06)', paddingTop: '12px' }}>
+                <label style={{ ...LABEL, color: 'rgba(255,255,255,0.3)' }} className="flex items-center justify-between">
+                  <span>{isAr ? 'الوزن القديم (مرجعي فقط)' : 'Legacy Weight (reference only)'}</span>
+                  <span style={{ color: '#fbbf24', fontFamily: 'monospace', fontSize: '11px' }}>
+                    ~ {livePct.toFixed(2)}%
+                  </span>
+                </label>
+                <input type="number" style={{ ...INPUT, opacity: 0.5 }} value={form.weight} min={0.01} step={0.01}
+                  onChange={e => set('weight', parseFloat(e.target.value) || 0)} />
               </div>
             </div>
 

@@ -7,6 +7,11 @@ interface WheelGameSettings {
   active: boolean;
   spin_cost_points: number;
   free_daily_spins: number;
+  single_spin_cost: number;
+  five_spin_cost: number;
+  ten_spin_cost: number;
+  five_spin_enabled: boolean;
+  ten_spin_enabled: boolean;
   title_ar: string;
   title_en: string;
   [key: string]: unknown;
@@ -185,6 +190,11 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({ language }) => {
     active: true,
     spin_cost_points: 0,
     free_daily_spins: 0,
+    single_spin_cost: 100,
+    five_spin_cost: 450,
+    ten_spin_cost: 800,
+    five_spin_enabled: true,
+    ten_spin_enabled: true,
     title_ar: '',
     title_en: '',
     maintenance_mode: false,
@@ -218,6 +228,11 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({ language }) => {
             active: data.active ?? true,
             spin_cost_points: data.spin_cost_points ?? 0,
             free_daily_spins: data.free_daily_spins ?? 0,
+            single_spin_cost: data.single_spin_cost ?? 100,
+            five_spin_cost: data.five_spin_cost ?? 450,
+            ten_spin_cost: data.ten_spin_cost ?? 800,
+            five_spin_enabled: data.five_spin_enabled ?? true,
+            ten_spin_enabled: data.ten_spin_enabled ?? true,
             title_ar: data.title_ar ?? '',
             title_en: data.title_en ?? '',
             maintenance_mode: false,
@@ -232,6 +247,11 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({ language }) => {
             active: true,
             spin_cost_points: 0,
             free_daily_spins: 0,
+            single_spin_cost: 100,
+            five_spin_cost: 450,
+            ten_spin_cost: 800,
+            five_spin_enabled: true,
+            ten_spin_enabled: true,
             title_ar: '',
             title_en: '',
             maintenance_mode: false,
@@ -263,6 +283,11 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({ language }) => {
         active: formState.active,
         spin_cost_points: formState.spin_cost_points,
         free_daily_spins: formState.free_daily_spins,
+        single_spin_cost: formState.single_spin_cost,
+        five_spin_cost: formState.five_spin_cost,
+        ten_spin_cost: formState.ten_spin_cost,
+        five_spin_enabled: formState.five_spin_enabled,
+        ten_spin_enabled: formState.ten_spin_enabled,
         title_ar: formState.title_ar,
         title_en: formState.title_en,
       };
@@ -412,6 +437,81 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({ language }) => {
             {isArabic
               ? 'السحبات المدفوعة مفعّلة'
               : 'Paid spins are enabled'}
+          </div>
+        )}
+      </SectionCard>
+
+      <SectionCard title={isArabic ? 'تسعير السحب المتعدد' : 'Multi-Spin Pricing'}>
+        <InputField
+          label={isArabic ? 'تكلفة سحبة واحدة (نقاط)' : 'Single Spin Cost (points)'}
+          value={formState.single_spin_cost}
+          onChange={(value) => handleFieldChange('single_spin_cost', value)}
+          type="number"
+          min={0}
+        />
+        <div
+          style={{
+            display: 'flex',
+            gap: '16px',
+          }}
+        >
+          <div style={{ flex: 1 }}>
+            <ToggleSwitch
+              label={isArabic ? 'تفعيل 5 سحبات' : 'Enable 5x Spin'}
+              checked={formState.five_spin_enabled}
+              onChange={(checked) => handleFieldChange('five_spin_enabled', checked)}
+            />
+            {formState.five_spin_enabled && (
+              <InputField
+                label={isArabic ? 'تكلفة 5 سحبات (نقاط)' : '5x Spin Cost (points)'}
+                value={formState.five_spin_cost}
+                onChange={(value) => handleFieldChange('five_spin_cost', value)}
+                type="number"
+                min={0}
+              />
+            )}
+          </div>
+          <div style={{ flex: 1 }}>
+            <ToggleSwitch
+              label={isArabic ? 'تفعيل 10 سحبات' : 'Enable 10x Spin'}
+              checked={formState.ten_spin_enabled}
+              onChange={(checked) => handleFieldChange('ten_spin_enabled', checked)}
+            />
+            {formState.ten_spin_enabled && (
+              <InputField
+                label={isArabic ? 'تكلفة 10 سحبات (نقاط)' : '10x Spin Cost (points)'}
+                value={formState.ten_spin_cost}
+                onChange={(value) => handleFieldChange('ten_spin_cost', value)}
+                type="number"
+                min={0}
+              />
+            )}
+          </div>
+        </div>
+        {(formState.five_spin_enabled || formState.ten_spin_enabled) && (
+          <div
+            style={{
+              backgroundColor: 'rgba(34, 211, 238, 0.1)',
+              border: '1px solid rgba(34, 211, 238, 0.3)',
+              borderRadius: '8px',
+              padding: '12px 14px',
+              fontSize: '13px',
+              color: 'rgba(34, 211, 238, 0.9)',
+              marginTop: '8px',
+            }}
+          >
+            {isArabic ? 'الخصم: ' : 'Discounts: '}
+            {formState.five_spin_enabled && formState.single_spin_cost > 0 && (
+              <span>
+                5x = {Math.round((1 - formState.five_spin_cost / (formState.single_spin_cost * 5)) * 100)}%
+              </span>
+            )}
+            {formState.five_spin_enabled && formState.ten_spin_enabled && ' · '}
+            {formState.ten_spin_enabled && formState.single_spin_cost > 0 && (
+              <span>
+                10x = {Math.round((1 - formState.ten_spin_cost / (formState.single_spin_cost * 10)) * 100)}%
+              </span>
+            )}
           </div>
         )}
       </SectionCard>
