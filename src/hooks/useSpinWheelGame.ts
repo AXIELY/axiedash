@@ -74,6 +74,7 @@ export interface WheelSettings {
   ten_spin_cost: number;
   five_spin_enabled: boolean;
   ten_spin_enabled: boolean;
+  multi_spin_enabled: boolean;
   fallback_prize_id: string;
 }
 
@@ -90,6 +91,7 @@ const DEFAULT_SETTINGS: WheelSettings = {
   ten_spin_cost: 1000,
   five_spin_enabled: true,
   ten_spin_enabled: true,
+  multi_spin_enabled: false,
   fallback_prize_id: 'points-1',
 };
 
@@ -230,9 +232,10 @@ export function useSpinWheelGame() {
     if (rpcErr || !data?.success) {
       const errCode = data?.error ?? rpcErr?.message ?? 'unknown';
       const errorMessages: Record<string, string> = {
-        insufficient_points: `نقاطك غير كافية. تحتاج ${data?.required ?? (quantity === 5 ? settings.five_spin_cost : quantity === 10 ? settings.ten_spin_cost : settings.single_spin_cost)} نقطة.`,
+        insufficient_points: `نقاطك غير كافية. تحتاج ${data?.required ?? settings.single_spin_cost * quantity} نقطة.`,
         five_spin_disabled: 'خيار 5 لفات غير متاح حالياً.',
         ten_spin_disabled: 'خيار 10 لفات غير متاح حالياً.',
+        multi_spin_disabled: 'السحب المتعدد غير متاح حالياً.',
         no_published_version: 'تكوين العجلة غير جاهز. يرجى المحاولة لاحقاً.',
         no_active_wheel: 'لا توجد عجلة نشطة حالياً.',
         invalid_spin_count: 'عدد اللفات غير صالح.',
@@ -405,15 +408,12 @@ export function useSpinWheelGame() {
 
   const getSpinCost = useCallback((quantity: number): number => {
     if (quantity === 1) return freeSpinsLeft > 0 ? 0 : settings.single_spin_cost;
-    if (quantity === 5) return settings.five_spin_cost;
-    if (quantity === 10) return settings.ten_spin_cost;
     return settings.single_spin_cost * quantity;
   }, [settings, freeSpinsLeft]);
 
   const canAffordSpin = useCallback((quantity: number): boolean => {
     if (quantity === 1 && freeSpinsLeft > 0) return true;
-    if (quantity === 5 && !settings.five_spin_enabled) return false;
-    if (quantity === 10 && !settings.ten_spin_enabled) return false;
+    if (quantity > 1 && !settings.multi_spin_enabled) return false;
     return (user?.points || 0) >= getSpinCost(quantity);
   }, [user, settings, freeSpinsLeft, getSpinCost]);
 

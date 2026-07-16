@@ -1206,7 +1206,7 @@ export function SpinWheelGame({ onOpenMyPrizes, onNavigate }: { onOpenMyPrizes?:
             <div className="flex gap-2 mt-3.5 aw-multispin-row">
               {[1, 5, 10].map(mult => {
                 const cost = getSpinCost(mult);
-                const isDisabled = mult === 5 && !settings.five_spin_enabled || mult === 10 && !settings.ten_spin_enabled;
+                const isDisabled = mult > 1 && !settings.multi_spin_enabled;
                 const affordable = canAffordSpin(mult);
                 const isFree = mult === 1 && freeSpinsLeft > 0;
                 return (
@@ -1238,7 +1238,15 @@ export function SpinWheelGame({ onOpenMyPrizes, onNavigate }: { onOpenMyPrizes?:
                   </h3>
                   <div style={{ display: 'grid', gap: 8, marginBottom: 20 }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 14, color: '#9c8b6e' }}>
-                      <span>التكلفة:</span>
+                      <span>عدد اللفات:</span>
+                      <span style={{ color: '#f8e7b4', fontWeight: 700 }}>{showMultiSpinConfirm}</span>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 14, color: '#9c8b6e' }}>
+                      <span>سعر اللفة:</span>
+                      <span style={{ color: '#f8e7b4', fontWeight: 700 }}>{spinCost.toLocaleString('en')} نقطة</span>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 14, color: '#9c8b6e' }}>
+                      <span>الإجمالي:</span>
                       <span style={{ color: '#f8e7b4', fontWeight: 700 }}>{getSpinCost(showMultiSpinConfirm).toLocaleString('en')} نقطة</span>
                     </div>
                     <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 14, color: '#9c8b6e' }}>
@@ -1246,7 +1254,7 @@ export function SpinWheelGame({ onOpenMyPrizes, onNavigate }: { onOpenMyPrizes?:
                       <span style={{ color: '#f8e7b4', fontWeight: 700 }}>{userPoints.toLocaleString('en')}</span>
                     </div>
                     <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 14, color: '#9c8b6e', borderTop: '1px solid rgba(214,178,94,.1)', paddingTop: 8 }}>
-                      <span>رصيدك بعد السحب:</span>
+                      <span>الرصيد بعد السحب:</span>
                       <span style={{ color: canAffordSpin(showMultiSpinConfirm) ? '#34d399' : '#f87171', fontWeight: 700 }}>
                         {(userPoints - getSpinCost(showMultiSpinConfirm)).toLocaleString('en')}
                       </span>
