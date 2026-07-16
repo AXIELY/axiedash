@@ -772,7 +772,7 @@ export function SpinWheelGame({ onOpenMyPrizes, onNavigate }: { onOpenMyPrizes?:
     setShowWinner(true);
     setGameState('result');
     document.getElementById('aw-zone')?.classList.remove('aw-spinning');
-  }, [canSpin, spinning, gameState, doSpin, commitSpin, activePrizesCount, sound, animateWheelTo, confetti, streak, user?.id, fetchUserGrandPrizeProgress]);
+  }, [canSpin, spinning, gameState, doSpin, commitSpin, settings.prizes.length, sound, animateWheelTo, confetti, streak, user?.id, fetchUserGrandPrizeProgress]);
 
   const closeWinner = useCallback(() => {
     setShowWinner(false);
@@ -812,7 +812,6 @@ export function SpinWheelGame({ onOpenMyPrizes, onNavigate }: { onOpenMyPrizes?:
 
   const prizes = settings.prizes;
   const activePrizes = prizes.filter(p => !p.disabled && ((p.probability_bp ?? 0) > 0 || p.weight > 0));
-  const activePrizesCount = activePrizes.length;
   const totalBp = activePrizes.reduce((s, p) => s + (p.probability_bp ?? 0), 0);
   const useProportional = totalBp === 10000;
   const n = activePrizes.length;
