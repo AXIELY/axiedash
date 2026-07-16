@@ -756,10 +756,8 @@ export function SpinWheelGame({ onOpenMyPrizes, onNavigate }: { onOpenMyPrizes?:
       setBatchResults(result.allResults);
     }
 
-    // Refresh per-user grand prize progress if unlocked
-    if (result.allResults && prize.type === 'grand') {
-      fetchUserGrandPrizeProgress().then(setUserGrandPrizeProgress);
-    }
+    // Always refresh per-user grand prize progress after any spin
+    fetchUserGrandPrizeProgress().then(setUserGrandPrizeProgress);
 
     // Highlight winning segment by finding index in activePrizes
     setWinningIndex(activePrizes.findIndex(p => p.id === prize.id));
@@ -1259,12 +1257,12 @@ export function SpinWheelGame({ onOpenMyPrizes, onNavigate }: { onOpenMyPrizes?:
                       flex: 1, padding: '10px', borderRadius: 10, background: 'rgba(255,255,255,0.05)',
                       border: '1px solid rgba(255,255,255,0.1)', color: '#9c8b6e', fontWeight: 700, cursor: 'pointer',
                     }}>إلغاء</button>
-                    <button disabled={!canAffordSpin(showMultiSpinConfirm) || isBusy}
-                      onClick={() => { const q = showMultiSpinConfirm; setShowMultiSpinConfirm(null); handleSpin(q); }}
+                    <button disabled={!canAffordSpin(showMultiSpinConfirm) || isBusy || gameState !== 'ready'}
+                      onClick={() => { if (gameState !== 'ready') return; const q = showMultiSpinConfirm; setShowMultiSpinConfirm(null); handleSpin(q); }}
                       style={{
                         flex: 1, padding: '10px', borderRadius: 10,
-                        background: canAffordSpin(showMultiSpinConfirm) ? 'linear-gradient(135deg, #D6AA62, #8B6B2E)' : '#333',
-                        border: 'none', color: '#fff', fontWeight: 700, cursor: canAffordSpin(showMultiSpinConfirm) ? 'pointer' : 'not-allowed',
+                        background: canAffordSpin(showMultiSpinConfirm) && gameState === 'ready' ? 'linear-gradient(135deg, #D6AA62, #8B6B2E)' : '#333',
+                        border: 'none', color: '#fff', fontWeight: 700, cursor: canAffordSpin(showMultiSpinConfirm) && gameState === 'ready' ? 'pointer' : 'not-allowed',
                       }}>تأكيد السحب</button>
                   </div>
                 </div>

@@ -144,6 +144,8 @@ export function useSpinWheelGame() {
     quantity: number;
     allResults: Array<{ prizeIndex: number; prize: WheelPrize; fallbackUsed?: boolean; originalPrizeId?: string }>;
     unlockedGrandPrizeIds: string[];
+    progress?: { before: number; after: number; required: number; remaining: number; unlocked: boolean; unlocked_during_batch_at: number | null };
+    balanceAfter?: number;
   } | null>(null);
 
   useEffect(() => {
@@ -208,6 +210,8 @@ export function useSpinWheelGame() {
     prize: WheelPrize;
     allResults: Array<{ prizeIndex: number; prize: WheelPrize; fallbackUsed?: boolean; originalPrizeId?: string }>;
     quantity: number;
+    progress?: { before: number; after: number; required: number; remaining: number; unlocked: boolean; unlocked_during_batch_at: number | null };
+    balanceAfter?: number;
   } | null> => {
     if (!user || !settings.active || spinning) return null;
 
@@ -225,16 +229,17 @@ export function useSpinWheelGame() {
 
     if (rpcErr || !data?.success) {
       const errCode = data?.error ?? rpcErr?.message ?? 'unknown';
-      if (errCode === 'insufficient_points') {
-        const required = data?.required ?? (quantity === 5 ? settings.five_spin_cost : quantity === 10 ? settings.ten_spin_cost : settings.single_spin_cost);
-        setError(`نقاطك غير كافية. تحتاج ${required} نقطة.`);
-      } else if (errCode === 'five_spin_disabled' || errCode === 'ten_spin_disabled') {
-        setError('هذا الخيار غير متاح حالياً.');
-      } else if (errCode === 'no_published_version') {
-        setError('تكوين العجلة غير جاهز. يرجى المحاولة لاحقاً.');
-      } else {
-        setError('حدث خطأ أثناء الدوران.');
-      }
+      const errorMessages: Record<string, string> = {
+        insufficient_points: `نقاطك غير كافية. تحتاج ${data?.required ?? quantity === 5 ? settings.five_spin_cost : quantity === 10 ? settings.ten_spin_cost : settings.single_spin_cost} نقطة.`,
+        five_spin_disabled: 'خيار 5 لفات غير متاح حالياً.',
+        ten_spin_disabled: 'خيار 10 لفات غير متاح حالياً.',
+        no_published_version: 'تكوين العجلة غير جاهز. يرجى المحاولة لاحقاً.',
+        no_active_wheel: 'لا توجد عجلة نشطة حالياً.',
+        invalid_spin_count: 'عدد اللفات غير صالح.',
+        invalid_probability_config: 'إعدادات الاحتمالات غير صحيحة.',
+        not_authenticated: 'يجب تسجيل الدخول أولاً.',
+      };
+      setError(errorMessages[errCode] || `حدث خطأ: ${errCode}`);
       setSpinning(false);
       return null;
     }
@@ -249,6 +254,16 @@ export function useSpinWheelGame() {
       unlocked_grand_prize_ids: string[];
       batch_request_id: string;
       recovered?: boolean;
+      balance_before?: number;
+      balance_after?: number;
+      progress?: {
+        before: number;
+        after: number;
+        required: number;
+        remaining: number;
+        unlocked: boolean;
+        unlocked_during_batch_at: number | null;
+      };
     };
 
     const allResults: Array<{ prizeIndex: number; prize: WheelPrize; fallbackUsed?: boolean; originalPrizeId?: string }> = [];
@@ -283,6 +298,8 @@ export function useSpinWheelGame() {
       quantity: result.quantity,
       allResults,
       unlockedGrandPrizeIds: result.unlocked_grand_prize_ids || [],
+      progress: result.progress,
+      balanceAfter: result.balance_after,
     };
 
     if (result.recovered) {
@@ -294,10 +311,12 @@ export function useSpinWheelGame() {
       prize,
       allResults,
       quantity: result.quantity,
+      progress: result.progress,
+      balanceAfter: result.balance_after,
     };
   }, [user, settings, spinning, spinsToday]);
 
-  const commitSpin = useCallback(async (prize: WheelPrize) => {
+  const commitSpin = useCallback(async (_prize: WheelPrize) => {
     if (!user) return;
 
     try {
