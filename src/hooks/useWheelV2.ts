@@ -13,6 +13,7 @@ import type {
 export function useWheelV2() {
   const { user, refreshUser } = useAuth();
   const [config, setConfig] = useState<WheelV2Config | null>(null);
+  const [featureEnabled, setFeatureEnabled] = useState<boolean>(false);
   const [freeSpins, setFreeSpins] = useState<FreeSpinState | null>(null);
   const [grandPrize, setGrandPrize] = useState<GrandPrizeProgress | null>(null);
   const [winners, setWinners] = useState<WinnerEvent[]>([]);
@@ -33,6 +34,15 @@ export function useWheelV2() {
       return data as WheelV2Config;
     }
     return null;
+  }, []);
+
+  const fetchFeatureFlag = useCallback(async () => {
+    const { data } = await supabase
+      .from('wheel_v2_feature_flags')
+      .select('value')
+      .eq('key', 'wheel_v2_enabled')
+      .maybeSingle();
+    setFeatureEnabled(data?.value === true);
   }, []);
 
   const fetchFreeSpins = useCallback(async () => {
@@ -75,10 +85,10 @@ export function useWheelV2() {
     if (!user) return;
     (async () => {
       setLoading(true);
-      await Promise.all([fetchConfig(), fetchFreeSpins(), fetchGrandPrize(), fetchWinners(), fetchLeaderboard()]);
+      await Promise.all([fetchConfig(), fetchFeatureFlag(), fetchFreeSpins(), fetchGrandPrize(), fetchWinners(), fetchLeaderboard()]);
       setLoading(false);
     })();
-  }, [user, fetchConfig, fetchFreeSpins, fetchGrandPrize, fetchWinners, fetchLeaderboard]);
+  }, [user, fetchConfig, fetchFeatureFlag, fetchFreeSpins, fetchGrandPrize, fetchWinners, fetchLeaderboard]);
 
   // Realtime for winner events
   useEffect(() => {
@@ -141,6 +151,7 @@ export function useWheelV2() {
 
   return {
     config,
+    featureEnabled,
     freeSpins,
     grandPrize,
     winners,
@@ -154,6 +165,6 @@ export function useWheelV2() {
     fetchGrandPrize,
     fetchLeaderboard,
     refresh: () =>
-      Promise.all([fetchConfig(), fetchFreeSpins(), fetchGrandPrize(), fetchWinners(), fetchLeaderboard()]),
+      Promise.all([fetchConfig(), fetchFeatureFlag(), fetchFreeSpins(), fetchGrandPrize(), fetchWinners(), fetchLeaderboard()]),
   };
 }

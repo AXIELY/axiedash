@@ -15,6 +15,25 @@ export interface WheelV2Prize {
   reward_payload: Record<string, any>;
   rarity: Rarity;
   icon_url?: string;
+  icon_storage_path?: string;
+  icon_alt_ar?: string;
+  icon_alt_en?: string;
+  icon_fit?: 'CONTAIN' | 'COVER';
+  icon_scale?: number;
+  icon_offset_x?: number;
+  icon_offset_y?: number;
+  icon_rotation?: number;
+  icon_background_enabled?: boolean;
+  icon_background_style?: 'solid' | 'radial' | 'none';
+  icon_background_color?: string;
+  icon_border_color?: string;
+  icon_glow_color?: string;
+  icon_glow_intensity?: number;
+  icon_shadow_intensity?: number;
+  container_scale?: number;
+  mobile_container_scale?: number;
+  desktop_container_scale?: number;
+  sizing_mode?: 'AUTO' | 'CUSTOM';
   wheel_color_start: string;
   wheel_color_end: string;
   text_color: string;
@@ -28,6 +47,15 @@ export interface WheelV2Prize {
   range_start: number;
   range_end: number;
   sector_angle: number;
+}
+
+export interface PublishValidation {
+  valid: boolean;
+  errors: string[];
+  warnings: string[];
+  prize_count: number;
+  total_ppm: number;
+  version_status: string;
 }
 
 export interface WheelV2Config {

@@ -15,7 +15,7 @@ export function WheelV2Page({ onNavigate }: WheelV2PageProps) {
   const isRTL = language === 'ar';
   const { user } = useAuth();
   const wheel = useWheelV2();
-  const { config, freeSpins, grandPrize, winners, leaderboard, loading, spinning } = wheel;
+  const { config, featureEnabled, freeSpins, grandPrize, winners, leaderboard, loading, spinning } = wheel;
 
   const [rotation, setRotation] = useState(0);
   const [selectedSpinCount, setSelectedSpinCount] = useState(1);
@@ -224,7 +224,19 @@ export function WheelV2Page({ onNavigate }: WheelV2PageProps) {
       <div className="flex items-center justify-center min-h-[60vh]">
         <div className="text-center">
           <div className="text-[#9c8b6e] text-lg mb-2">{isRTL ? 'عجلة الحظ غير متاحة' : 'Wheel unavailable'}</div>
-          <div className="text-[#6e5a3e] text-sm">{isRTL ? 'لم يتم نشر إصدار بعد' : 'No published version yet'}</div>
+          <div className="text-[#6e5a3e] text-sm">{isRTL ? 'لم يتم نشر إصدار للعجلة بعد' : 'No published version yet'}</div>
+        </div>
+      </div>
+    );
+  }
+
+  if (!featureEnabled) {
+    return (
+      <div className="flex items-center justify-center min-h-[60vh]">
+        <div className="text-center">
+          <div className="text-5xl mb-4">{'🎯'}</div>
+          <div className="text-[#f8e7b4] text-xl font-bold mb-2">{isRTL ? 'عجلة أكسي قيد الاختبار حالياً' : 'AXIE Wheel is currently in testing'}</div>
+          <div className="text-[#9c8b6e] text-sm">{isRTL ? 'سيتم تفعيلها قريباً للجميع' : 'It will be available to everyone soon'}</div>
         </div>
       </div>
     );

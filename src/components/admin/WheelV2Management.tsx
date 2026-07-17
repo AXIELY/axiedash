@@ -1,8 +1,8 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { supabase } from '../../lib/supabase';
 import { useLanguage } from '../../contexts/LanguageContext';
 import { WheelRenderer } from '../wheel-v2/WheelRenderer';
-import type { WheelV2Prize } from '../wheel-v2/types';
+import type { WheelV2Prize, PublishValidation } from '../wheel-v2/types';
 
 type AdminTab = 'overview' | 'settings' | 'economy' | 'prizes' | 'grand-prize' | 'design' | 'leaderboard' | 'audit' | 'publish';
 
@@ -39,6 +39,10 @@ export function WheelV2Management() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+  const [publishValidation, setPublishValidation] = useState<PublishValidation | null>(null);
+  const [validating, setValidating] = useState(false);
+  const [publishedPrizes, setPublishedPrizes] = useState<WheelV2Prize[]>([]);
+  const [previewMode, setPreviewMode] = useState<'draft' | 'published'>('draft');
 
   const fetchOverview = useCallback(async () => {
     const { data } = await supabase.rpc('get_wheel_v2_admin_overview');
@@ -66,6 +70,30 @@ export function WheelV2Management() {
     }
   }, []);
 
+  const fetchPublishValidation = useCallback(async () => {
+    if (!draftVersion) { setPublishValidation(null); return; }
+    setValidating(true);
+    try {
+      const { data } = await supabase.rpc('validate_wheel_v2_publish', { p_version_id: draftVersion.id });
+      if (data) setPublishValidation(data as PublishValidation);
+    } catch { /* ignore */ }
+    setValidating(false);
+  }, [draftVersion]);
+
+  const fetchPublishedPrizes = useCallback(async () => {
+    const { data } = await supabase.rpc('get_published_wheel_v2_config');
+    if (data?.prizes) {
+      setPublishedPrizes((data.prizes as any[]).map((p) => ({
+        ...p,
+        sector_angle: (p.probability_ppm / 1000000) * 360,
+        range_start: 0,
+        range_end: 0,
+      })) as WheelV2Prize[]);
+    } else {
+      setPublishedPrizes([]);
+    }
+  }, []);
+
   const fetchAuditLog = useCallback(async () => {
     const { data } = await supabase.rpc('get_wheel_v2_audit_log', { p_limit: 50 });
     if (data) setAuditLog(data);
@@ -79,7 +107,7 @@ export function WheelV2Management() {
   useEffect(() => {
     (async () => {
       setLoading(true);
-      await Promise.all([fetchOverview(), fetchDraft(), fetchAuditLog(), fetchLeaderboard('week')]);
+      await Promise.all([fetchOverview(), fetchDraft(), fetchAuditLog(), fetchLeaderboard('week'), fetchPublishedPrizes()]);
       setLoading(false);
     })();
   }, [fetchOverview, fetchDraft, fetchAuditLog, fetchLeaderboard]);
@@ -87,6 +115,10 @@ export function WheelV2Management() {
   useEffect(() => {
     fetchLeaderboard(leaderboardPeriod);
   }, [leaderboardPeriod, fetchLeaderboard]);
+
+  useEffect(() => {
+    fetchPublishValidation();
+  }, [fetchPublishValidation]);
 
   const showMessage = (msg: string) => {
     setMessage(msg);
@@ -162,7 +194,7 @@ export function WheelV2Management() {
     const { data } = await supabase.rpc('publish_wheel_v2_version', { p_version_id: draftVersion.id });
     if (data?.success) {
       showMessage(isRTL ? 'تم النشر بنجاح!' : 'Published successfully!');
-      await Promise.all([fetchOverview(), fetchDraft()]);
+      await Promise.all([fetchOverview(), fetchDraft(), fetchPublishedPrizes(), fetchPublishValidation()]);
     } else if (data) {
       showMessage(`${isRTL ? 'فشل النشر' : 'Publish failed'}: ${data.error}`);
     }
@@ -186,7 +218,7 @@ export function WheelV2Management() {
   };
 
   // Build preview prizes with sector angles
-  const previewPrizes: WheelV2Prize[] = (draftPrizes || [])
+  const draftPreviewPrizes: WheelV2Prize[] = (draftPrizes || [])
     .filter((p) => p.enabled && p.visible_on_wheel)
     .map((p, i) => {
       const angle = (p.probability_ppm / 1000000) * 360;
@@ -201,14 +233,15 @@ export function WheelV2Management() {
         sector_angle: angle,
       } as WheelV2Prize;
     });
+  const previewPrizes = previewMode === 'published' ? publishedPrizes : draftPreviewPrizes;
 
   if (loading) {
     return <div className="flex items-center justify-center min-h-[60vh] text-[#9c8b6e]">Loading...</div>;
   }
 
-  const totalPpm = probValidation?.total_ppm ?? 0;
+  const totalPpm = probValidation?.total_ppm ?? publishValidation?.total_ppm ?? 0;
   const remainingPpm = 1000000 - totalPpm;
-  const canPublish = totalPpm === 1000000 && draftPrizes.length >= 1 && draftPrizes.length <= 20;
+  const canPublish = (publishValidation?.valid ?? false) && draftPrizes.length >= 1 && draftPrizes.length <= 20;
 
   return (
     <div className="space-y-4" style={{ direction: isRTL ? 'rtl' : 'ltr' }}>
@@ -360,26 +393,64 @@ export function WheelV2Management() {
         {/* DESIGN & PREVIEW */}
         {activeTab === 'design' && (
           <div className="space-y-4">
-            <div className="flex justify-center">
-              <WheelRenderer prizes={previewPrizes} rotation={0} spinning={false} size={400}
-                grandPrizeLocked={true} />
+            <div className="flex items-center justify-center gap-2 flex-wrap">
+              <button onClick={() => setPreviewMode('draft')}
+                className="text-xs px-3 py-1.5 rounded-full font-bold"
+                style={{
+                  background: previewMode === 'draft' ? 'linear-gradient(180deg, #f8e7b4, #d9ab4e)' : 'transparent',
+                  color: previewMode === 'draft' ? '#241705' : '#9c8b6e',
+                  border: `1px solid ${previewMode === 'draft' ? 'transparent' : 'rgba(214,178,94,0.16)'}`,
+                }}>
+                {isRTL ? 'معاينة المسودة' : 'Draft Preview'}
+              </button>
+              <button onClick={() => setPreviewMode('published')} disabled={publishedPrizes.length === 0}
+                className="text-xs px-3 py-1.5 rounded-full font-bold disabled:opacity-40"
+                style={{
+                  background: previewMode === 'published' ? 'linear-gradient(180deg, #31d8c5, #1ea897)' : 'transparent',
+                  color: previewMode === 'published' ? '#0a1f1c' : '#9c8b6e',
+                  border: `1px solid ${previewMode === 'published' ? 'transparent' : 'rgba(214,178,94,0.16)'}`,
+                }}>
+                {isRTL ? 'معاينة المنشور' : 'Published Preview'}
+              </button>
             </div>
+
+            <div className="rounded-xl p-2 text-center text-xs font-bold"
+              style={{ background: 'rgba(217,171,78,0.12)', border: '1px solid rgba(214,178,94,0.3)', color: '#d9ab4e' }}>
+              {isRTL ? 'معاينة إدارية — اللعبة غير مفعلة للعامة' : 'Admin preview — game is not publicly enabled'}
+            </div>
+
+            {previewMode === 'published' && publishedPrizes.length === 0 ? (
+              <div className="text-center py-10 text-sm text-[#9c8b6e]">
+                {isRTL ? 'لا يوجد إصدار منشور بعد — استخدم معاينة المسودة' : 'No published version yet — use Draft Preview'}
+              </div>
+            ) : previewPrizes.length === 0 ? (
+              <div className="text-center py-10 text-sm text-[#9c8b6e]">
+                {isRTL ? 'لا توجد جوائز مرئية في المسودة' : 'No visible prizes in draft'}
+              </div>
+            ) : (
+              <div className="flex justify-center">
+                <WheelRenderer prizes={previewPrizes} rotation={0} spinning={false} size={400}
+                  grandPrizeLocked={true} />
+              </div>
+            )}
             <div className="text-xs text-[#9c8b6e] text-center">
               {isRTL ? 'معاينة حية باستخدام نفس WheelRenderer المشترك' : 'Live preview using the same shared WheelRenderer'}
             </div>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-              {[
-                { label: isRTL ? 'عدد الجوائز' : 'Prize Count', value: previewPrizes.length },
-                { label: isRTL ? 'أكبر قطاع' : 'Largest Sector', value: `${Math.max(...previewPrizes.map(p => p.sector_angle), 0).toFixed(1)}°` },
-                { label: isRTL ? 'أصغر قطاع' : 'Smallest Sector', value: `${Math.min(...previewPrizes.map(p => p.sector_angle), 0).toFixed(1)}°` },
-                { label: isRTL ? 'مجموع الزوايا' : 'Total Angles', value: `${previewPrizes.reduce((s, p) => s + p.sector_angle, 0).toFixed(1)}°` },
-              ].map((stat, i) => (
-                <div key={i} className="rounded-lg p-2 text-center" style={{ background: '#120c07', border: '1px solid rgba(214,178,94,0.16)' }}>
-                  <b className="text-sm text-[#f8e7b4] block">{stat.value}</b>
-                  <span className="text-[10px] text-[#9c8b6e]">{stat.label}</span>
-                </div>
-              ))}
-            </div>
+            {previewPrizes.length > 0 && (
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                {[
+                  { label: isRTL ? 'عدد الجوائز' : 'Prize Count', value: previewPrizes.length },
+                  { label: isRTL ? 'أكبر قطاع' : 'Largest Sector', value: `${Math.max(...previewPrizes.map(p => p.sector_angle), 0).toFixed(1)}°` },
+                  { label: isRTL ? 'أصغر قطاع' : 'Smallest Sector', value: `${Math.min(...previewPrizes.map(p => p.sector_angle), 0).toFixed(1)}°` },
+                  { label: isRTL ? 'مجموع الزوايا' : 'Total Angles', value: `${previewPrizes.reduce((s, p) => s + p.sector_angle, 0).toFixed(1)}°` },
+                ].map((stat, i) => (
+                  <div key={i} className="rounded-lg p-2 text-center" style={{ background: '#120c07', border: '1px solid rgba(214,178,94,0.16)' }}>
+                    <b className="text-sm text-[#f8e7b4] block">{stat.value}</b>
+                    <span className="text-[10px] text-[#9c8b6e]">{stat.label}</span>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         )}
 
@@ -497,26 +568,67 @@ export function WheelV2Management() {
               <div className="text-xs text-[#9c8b6e] mt-1">{draftVersion.title_en}</div>
             </div>
 
-            <div className="rounded-xl p-4" style={{ background: '#120c07', border: '1px solid rgba(214,178,94,0.16)' }}>
-              <div className="flex justify-between text-sm mb-2">
-                <span className="text-[#9c8b6e]">{isRTL ? 'مجموع الاحتمالات' : 'Probability Sum'}</span>
-                <b style={{ color: totalPpm === 1000000 ? '#31d8c5' : '#e6455c' }}>
-                  {(totalPpm / 10000).toFixed(4)}%
-                </b>
-              </div>
-              <div className="flex justify-between text-sm mb-2">
-                <span className="text-[#9c8b6e]">{isRTL ? 'عدد الجوائز' : 'Prize Count'}</span>
-                <b style={{ color: draftPrizes.length >= 1 && draftPrizes.length <= 20 ? '#31d8c5' : '#e6455c' }}>
-                  {draftPrizes.length}
-                </b>
-              </div>
-              <div className="flex justify-between text-sm">
-                <span className="text-[#9c8b6e]">{isRTL ? 'جاهز للنشر' : 'Ready to Publish'}</span>
-                <b style={{ color: canPublish ? '#31d8c5' : '#e6455c' }}>
-                  {canPublish ? '✓' : '✗'}
-                </b>
-              </div>
+            <div className="flex items-center justify-between">
+              <button onClick={fetchPublishValidation} disabled={validating}
+                className="text-xs px-3 py-1.5 rounded-lg font-bold disabled:opacity-50"
+                style={{ background: '#120c07', border: '1px solid rgba(214,178,94,0.16)', color: '#d9ab4e' }}>
+                {validating ? (isRTL ? 'جاري التحقق...' : 'Validating...') : (isRTL ? 'إعادة التحقق' : 'Re-validate')}
+              </button>
+              {publishValidation && (
+                <span className="text-xs font-bold" style={{ color: publishValidation.valid ? '#31d8c5' : '#e6455c' }}>
+                  {publishValidation.valid ? (isRTL ? '✓ صالح للنشر' : '✓ Valid to publish') : (isRTL ? '✗ غير صالح' : '✗ Invalid')}
+                </span>
+              )}
             </div>
+
+            {publishValidation && (
+              <div className="rounded-xl p-4" style={{ background: '#120c07', border: `1px solid ${publishValidation.valid ? 'rgba(49,216,197,0.3)' : 'rgba(230,69,92,0.3)'}` }}>
+                <div className="flex justify-between text-sm mb-2">
+                  <span className="text-[#9c8b6e]">{isRTL ? 'مجموع الاحتمالات' : 'Probability Sum'}</span>
+                  <b style={{ color: publishValidation.total_ppm === 1000000 ? '#31d8c5' : '#e6455c' }}>
+                    {(publishValidation.total_ppm / 10000).toFixed(4)}%
+                  </b>
+                </div>
+                <div className="flex justify-between text-sm mb-2">
+                  <span className="text-[#9c8b6e]">{isRTL ? 'عدد الجوائز' : 'Prize Count'}</span>
+                  <b style={{ color: publishValidation.prize_count >= 1 && publishValidation.prize_count <= 20 ? '#31d8c5' : '#e6455c' }}>
+                    {publishValidation.prize_count}
+                  </b>
+                </div>
+                <div className="flex justify-between text-sm">
+                  <span className="text-[#9c8b6e]">{isRTL ? 'حالة الإصدار' : 'Version Status'}</span>
+                  <b className="text-[#d9ab4e]">{publishValidation.version_status}</b>
+                </div>
+              </div>
+            )}
+
+            {publishValidation?.errors && publishValidation.errors.length > 0 && (
+              <div className="rounded-xl p-3 space-y-1" style={{ background: 'rgba(230,69,92,0.08)', border: '1px solid rgba(230,69,92,0.3)' }}>
+                <div className="text-xs font-bold text-[#e6455c] mb-1">{isRTL ? 'أخطاء مانعة:' : 'Blocking errors:'}</div>
+                {publishValidation.errors.map((err, i) => (
+                  <div key={i} className="text-xs text-[#e6455c] flex gap-1.5">
+                    <span>•</span><span>{err}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {publishValidation?.warnings && publishValidation.warnings.length > 0 && (
+              <div className="rounded-xl p-3 space-y-1" style={{ background: 'rgba(217,171,78,0.08)', border: '1px solid rgba(214,178,94,0.3)' }}>
+                <div className="text-xs font-bold text-[#d9ab4e] mb-1">{isRTL ? 'تحذيرات:' : 'Warnings:'}</div>
+                {publishValidation.warnings.map((warn, i) => (
+                  <div key={i} className="text-xs text-[#d9ab4e] flex gap-1.5">
+                    <span>•</span><span>{warn}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {publishValidation && publishValidation.valid && publishValidation.errors.length === 0 && publishValidation.warnings.length === 0 && (
+              <div className="rounded-xl p-3 text-center text-xs text-[#31d8c5]" style={{ background: 'rgba(49,216,197,0.08)', border: '1px solid rgba(49,216,197,0.3)' }}>
+                {isRTL ? '✓ جميع الفحوصات نجحت — الإصدار جاهز للنشر' : '✓ All checks passed — version is ready to publish'}
+              </div>
+            )}
 
             <button onClick={handlePublish} disabled={!canPublish}
               className="w-full rounded-xl py-3 font-bold text-sm disabled:opacity-50"
@@ -764,6 +876,276 @@ function PrizeEditor({ prize, onUpdate, onDelete, isRTL }: any) {
               <span className="text-[#9c8b6e]">{isRTL ? 'ظاهر' : 'Visible'}</span>
             </label>
           </div>
+
+          <IconEditor prize={prize} onUpdate={onUpdate} isRTL={isRTL} />
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Icon Editor (upload + visual controls) ───────────────
+function IconEditor({ prize, onUpdate, isRTL }: any) {
+  const [uploading, setUploading] = useState(false);
+  const [dragOver, setDragOver] = useState(false);
+  const [iconSectionOpen, setIconSectionOpen] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleFile = async (file: File) => {
+    if (!file) return;
+    const allowed = ['image/png', 'image/webp', 'image/jpeg', 'image/svg+xml'];
+    if (!allowed.includes(file.type)) {
+      alert(isRTL ? 'صيغة غير مدعومة. استخدم PNG, WebP, JPEG, أو SVG' : 'Unsupported format. Use PNG, WebP, JPEG, or SVG');
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      alert(isRTL ? 'الحجم الأقصى 5 ميجابايت' : 'Max size 5MB');
+      return;
+    }
+
+    setUploading(true);
+    try {
+      const ext = file.name.split('.').pop() || 'png';
+      const filePath = `${prize.prize_key}-${Date.now()}.${ext}`;
+
+      // Remove old icon if exists
+      if (prize.icon_storage_path) {
+        await supabase.storage.from('wheel-v2-prizes').remove([prize.icon_storage_path]);
+      }
+
+      const { error: uploadError } = await supabase.storage
+        .from('wheel-v2-prizes')
+        .upload(filePath, file, { cacheControl: '3600', upsert: false });
+
+      if (uploadError) throw uploadError;
+
+      const { data: urlData } = supabase.storage.from('wheel-v2-prizes').getPublicUrl(filePath);
+
+      onUpdate(prize.id, {
+        icon_storage_path: filePath,
+        icon_url: urlData.publicUrl,
+      });
+    } catch (err: any) {
+      alert(`${isRTL ? 'فشل رفع الأيقونة' : 'Icon upload failed'}: ${err.message || err}`);
+    }
+    setUploading(false);
+  };
+
+  const handleRemoveIcon = async () => {
+    if (prize.icon_storage_path) {
+      await supabase.storage.from('wheel-v2-prizes').remove([prize.icon_storage_path]);
+    }
+    onUpdate(prize.id, {
+      icon_storage_path: null,
+      icon_url: null,
+    });
+  };
+
+  const resetVisualDefaults = () => {
+    onUpdate(prize.id, {
+      icon_fit: 'CONTAIN',
+      icon_scale: 100,
+      icon_offset_x: 0,
+      icon_offset_y: 0,
+      icon_rotation: 0,
+      icon_background_enabled: true,
+      icon_background_style: 'radial',
+      icon_background_color: null,
+      icon_border_color: null,
+      icon_glow_color: null,
+      icon_glow_intensity: 0,
+      icon_shadow_intensity: 0,
+      sizing_mode: 'AUTO',
+      container_scale: 100,
+      mobile_container_scale: 100,
+      desktop_container_scale: 100,
+    });
+  };
+
+  const inputStyle = { background: '#0d0906', border: '1px solid rgba(214,178,94,0.16)', color: '#efe6d2' };
+  const labelStyle = "text-[10px] text-[#9c8b6e] block mb-0.5";
+
+  return (
+    <div className="mt-3 pt-3 border-t border-[rgba(214,178,94,0.16)] space-y-2">
+      <button onClick={() => setIconSectionOpen(!iconSectionOpen)} className="text-xs font-bold text-[#d9ab4e] flex items-center gap-1">
+        {iconSectionOpen ? '▼' : '▶'} {isRTL ? 'محرر الأيقونة' : 'Icon Editor'}
+      </button>
+
+      {iconSectionOpen && (
+        <div className="space-y-3">
+          {/* Upload / Preview */}
+          <div className="flex items-start gap-3">
+            <div className="w-20 h-20 rounded-lg flex items-center justify-center flex-shrink-0 overflow-hidden"
+              style={{ background: '#0d0906', border: '1px solid rgba(214,178,94,0.16)' }}>
+              {prize.icon_url ? (
+                <img src={prize.icon_url} alt="icon" className="w-full h-full object-contain" />
+              ) : (
+                <span className="text-xs text-[#9c8b6e]">{isRTL ? 'لا أيقونة' : 'No icon'}</span>
+              )}
+            </div>
+
+            <div className="flex-1 space-y-1.5">
+              <div
+                onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+                onDragLeave={() => setDragOver(false)}
+                onDrop={(e) => { e.preventDefault(); setDragOver(false); if (e.dataTransfer.files[0]) handleFile(e.dataTransfer.files[0]); }}
+                onClick={() => fileInputRef.current?.click()}
+                className="rounded-lg p-2 text-center text-xs cursor-pointer transition-colors"
+                style={{
+                  background: dragOver ? 'rgba(214,178,94,0.12)' : '#0d0906',
+                  border: `2px dashed ${dragOver ? '#d9ab4e' : 'rgba(214,178,94,0.3)'}`,
+                  color: uploading ? '#9c8b6e' : '#d9ab4e',
+                }}>
+                {uploading
+                  ? (isRTL ? 'جاري الرفع...' : 'Uploading...')
+                  : (isRTL ? 'انقر أو اسحب صورة هنا' : 'Click or drag an image here')}
+              </div>
+              <input ref={fileInputRef} type="file" accept="image/png,image/webp,image/jpeg,image/svg+xml" className="hidden"
+                onChange={(e) => { if (e.target.files?.[0]) handleFile(e.target.files[0]); e.target.value = ''; }} />
+
+              {prize.icon_url && (
+                <button onClick={handleRemoveIcon} disabled={uploading}
+                  className="text-[10px] text-[#e6455c] disabled:opacity-50">
+                  {isRTL ? 'إزالة الأيقونة' : 'Remove icon'}
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* Sizing Mode */}
+          <div className="flex gap-2">
+            {(['AUTO', 'CUSTOM'] as const).map((mode) => (
+              <button key={mode} onClick={() => onUpdate(prize.id, { sizing_mode: mode })}
+                className="text-[10px] px-2 py-1 rounded-lg font-bold"
+                style={{
+                  background: (prize.sizing_mode || 'AUTO') === mode ? 'linear-gradient(180deg, #f8e7b4, #d9ab4e)' : '#0d0906',
+                  color: (prize.sizing_mode || 'AUTO') === mode ? '#241705' : '#9c8b6e',
+                  border: `1px solid rgba(214,178,94,0.16)`,
+                }}>
+                {mode === 'AUTO' ? (isRTL ? 'تلقائي' : 'AUTO') : (isRTL ? 'مخصص' : 'CUSTOM')}
+              </button>
+            ))}
+          </div>
+
+          {/* Visual Controls */}
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <label className={labelStyle}>{isRTL ? 'الملاءمة' : 'Fit'}</label>
+              <select value={prize.icon_fit || 'CONTAIN'} onChange={(e) => onUpdate(prize.id, { icon_fit: e.target.value })}
+                className="w-full rounded-lg px-2 py-1 text-xs" style={inputStyle}>
+                <option value="CONTAIN">CONTAIN</option>
+                <option value="COVER">COVER</option>
+              </select>
+            </div>
+            <div>
+              <label className={labelStyle}>{isRTL ? 'الحجم %' : 'Scale %'}</label>
+              <input type="number" min="10" max="300" value={prize.icon_scale ?? 100}
+                onChange={(e) => onUpdate(prize.id, { icon_scale: +e.target.value })}
+                className="w-full rounded-lg px-2 py-1 text-xs" style={inputStyle} />
+            </div>
+            <div>
+              <label className={labelStyle}>{isRTL ? 'إزاحة X %' : 'Offset X %'}</label>
+              <input type="number" min="-100" max="100" value={prize.icon_offset_x ?? 0}
+                onChange={(e) => onUpdate(prize.id, { icon_offset_x: +e.target.value })}
+                className="w-full rounded-lg px-2 py-1 text-xs" style={inputStyle} />
+            </div>
+            <div>
+              <label className={labelStyle}>{isRTL ? 'إزاحة Y %' : 'Offset Y %'}</label>
+              <input type="number" min="-100" max="100" value={prize.icon_offset_y ?? 0}
+                onChange={(e) => onUpdate(prize.id, { icon_offset_y: +e.target.value })}
+                className="w-full rounded-lg px-2 py-1 text-xs" style={inputStyle} />
+            </div>
+            <div>
+              <label className={labelStyle}>{isRTL ? 'دوران°' : 'Rotation°'}</label>
+              <input type="number" min="-360" max="360" value={prize.icon_rotation ?? 0}
+                onChange={(e) => onUpdate(prize.id, { icon_rotation: +e.target.value })}
+                className="w-full rounded-lg px-2 py-1 text-xs" style={inputStyle} />
+            </div>
+            <div>
+              <label className={labelStyle}>{isRTL ? 'حدّة الظل' : 'Shadow'}</label>
+              <input type="range" min="0" max="100" value={prize.icon_shadow_intensity ?? 0}
+                onChange={(e) => onUpdate(prize.id, { icon_shadow_intensity: +e.target.value })}
+                className="w-full accent-[#d9ab4e]" />
+            </div>
+          </div>
+
+          {/* Background */}
+          <div className="space-y-1.5">
+            <label className="flex items-center gap-1.5 text-xs cursor-pointer">
+              <input type="checkbox" checked={prize.icon_background_enabled ?? true}
+                onChange={(e) => onUpdate(prize.id, { icon_background_enabled: e.target.checked })}
+                className="accent-[#d9ab4e]" />
+              <span className="text-[#9c8b6e]">{isRTL ? 'خلفية مفعّلة' : 'Background enabled'}</span>
+            </label>
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <label className={labelStyle}>{isRTL ? 'نمط الخلفية' : 'BG Style'}</label>
+                <select value={prize.icon_background_style || 'radial'} onChange={(e) => onUpdate(prize.id, { icon_background_style: e.target.value })}
+                  className="w-full rounded-lg px-2 py-1 text-xs" style={inputStyle}>
+                  <option value="radial">radial</option>
+                  <option value="solid">solid</option>
+                  <option value="none">none</option>
+                </select>
+              </div>
+              <div>
+                <label className={labelStyle}>{isRTL ? 'لون الخلفية' : 'BG Color'}</label>
+                <input type="color" value={prize.icon_background_color || '#1a1208'}
+                  onChange={(e) => onUpdate(prize.id, { icon_background_color: e.target.value })}
+                  className="w-full h-7 rounded-lg" style={inputStyle} />
+              </div>
+            </div>
+          </div>
+
+          {/* Glow + Border */}
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <label className={labelStyle}>{isRTL ? 'لون التوهج' : 'Glow Color'}</label>
+              <input type="color" value={prize.icon_glow_color || '#d9ab4e'}
+                onChange={(e) => onUpdate(prize.id, { icon_glow_color: e.target.value })}
+                className="w-full h-7 rounded-lg" style={inputStyle} />
+            </div>
+            <div>
+              <label className={labelStyle}>{isRTL ? 'شدة التوهج' : 'Glow Intensity'}</label>
+              <input type="range" min="0" max="100" value={prize.icon_glow_intensity ?? 0}
+                onChange={(e) => onUpdate(prize.id, { icon_glow_intensity: +e.target.value })}
+                className="w-full accent-[#d9ab4e]" />
+            </div>
+            <div>
+              <label className={labelStyle}>{isRTL ? 'لون الحدود' : 'Border Color'}</label>
+              <input type="color" value={prize.icon_border_color || '#d9ab4e'}
+                onChange={(e) => onUpdate(prize.id, { icon_border_color: e.target.value })}
+                className="w-full h-7 rounded-lg" style={inputStyle} />
+            </div>
+          </div>
+
+          {/* Container scales (CUSTOM mode) */}
+          {(prize.sizing_mode === 'CUSTOM') && (
+            <div className="grid grid-cols-3 gap-2">
+              <div>
+                <label className={labelStyle}>{isRTL ? 'حاوية %' : 'Container %'}</label>
+                <input type="number" min="50" max="200" value={prize.container_scale ?? 100}
+                  onChange={(e) => onUpdate(prize.id, { container_scale: +e.target.value })}
+                  className="w-full rounded-lg px-2 py-1 text-xs" style={inputStyle} />
+              </div>
+              <div>
+                <label className={labelStyle}>{isRTL ? 'موبايل %' : 'Mobile %'}</label>
+                <input type="number" min="50" max="200" value={prize.mobile_container_scale ?? 100}
+                  onChange={(e) => onUpdate(prize.id, { mobile_container_scale: +e.target.value })}
+                  className="w-full rounded-lg px-2 py-1 text-xs" style={inputStyle} />
+              </div>
+              <div>
+                <label className={labelStyle}>{isRTL ? 'ديسكتوب %' : 'Desktop %'}</label>
+                <input type="number" min="50" max="200" value={prize.desktop_container_scale ?? 100}
+                  onChange={(e) => onUpdate(prize.id, { desktop_container_scale: +e.target.value })}
+                  className="w-full rounded-lg px-2 py-1 text-xs" style={inputStyle} />
+              </div>
+            </div>
+          )}
+
+          <button onClick={resetVisualDefaults}
+            className="text-[10px] text-[#9c8b6e] underline">
+            {isRTL ? 'إعادة تعيين الإعدادات الافتراضية' : 'Reset to defaults'}
+          </button>
         </div>
       )}
     </div>
