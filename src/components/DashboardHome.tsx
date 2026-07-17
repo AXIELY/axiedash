@@ -18,19 +18,6 @@ interface DashboardHomeProps {
 /* ── Right bank: live games ── */
 const RIGHT_BANK: import('./GameLaunchPad').GameCardData[] = [
   {
-    id: 'wheel',
-    titleAr: 'عجلة أكسي',
-    titleEn: 'AXIE Wheel',
-    descAr: 'أدر العجلة واربح جوائز ومكافآت متنوعة',
-    descEn: 'Spin the wheel and win varied prizes',
-    page: 'wheel',
-    accentColor: '#3FB950',
-    players: 156,
-    tag: 'NEW',
-    theme: 'green',
-    badge: 'NEW',
-  },
-  {
     id: 'lucky-card',
     titleAr: 'بطاقة الحظ',
     titleEn: 'Lucky Card',

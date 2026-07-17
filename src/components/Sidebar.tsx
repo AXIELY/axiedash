@@ -2,7 +2,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { useAdmin } from '../hooks/useAdmin';
 import { useLanguage } from '../contexts/LanguageContext';
 import { LanguageToggle } from './LanguageToggle';
-import { Crown, LayoutDashboard, CircleUser as UserCircle, Gem, ShoppingBag, Dices, ListChecks, Award, Medal, ActivitySquare, LifeBuoy, LogOut, Plus, Shield, X, ChevronRight, Gift, ClipboardList, Star } from 'lucide-react';
+import { Crown, LayoutDashboard, CircleUser as UserCircle, Gem, ShoppingBag, Dices, ListChecks, Award, Medal, ActivitySquare, LifeBuoy, LogOut, Plus, Shield, X, ChevronRight, Gift, ClipboardList } from 'lucide-react';
 
 const RANK_COLORS: Record<string, string> = {
   Bronze:  '#CD7F32',
@@ -30,7 +30,6 @@ export const Sidebar = ({ currentPage, setCurrentPage, mobileOpen, onMobileClose
     { id: 'collection',   label: t('nav.collection'),   icon: Gem },
     { id: 'shop',         label: t('nav.shop'),         icon: ShoppingBag },
     { id: 'games',        label: isRTL ? 'سباق العملات' : 'Coin Rush',  icon: Dices },
-    { id: 'wheel',        label: isRTL ? 'عجلة أكسي'   : 'AXIE Wheel', icon: Star },
     { id: 'missions',     label: t('nav.missions'),     icon: ListChecks },
     { id: 'achievements', label: t('nav.achievements'), icon: Award },
     { id: 'leaderboard',  label: t('nav.leaderboard'),  icon: Medal },

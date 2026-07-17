@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import {
   Users, Settings, Package, Gift, ShoppingCart, BarChart3, Bell,
   Gamepad2, DollarSign, TrendingUp, ArrowRight, ArrowLeft, Clock,
-  CheckCircle, AlertCircle, XCircle, Flag, Crown, Zap, Menu, X, Star, Megaphone,
+  CheckCircle, AlertCircle, XCircle, Flag, Crown, Zap, Menu, X, Megaphone,
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useAdmin } from '../hooks/useAdmin';
@@ -13,7 +13,6 @@ import { OrderManagement } from '../components/admin/OrderManagement';
 import { OfferManagement } from '../components/admin/OfferManagement';
 import { ReportedMessagesManagement } from '../components/admin/ReportedMessagesManagement';
 import { LuckyCardManagement } from '../components/admin/LuckyCardManagement';
-import { WheelManagement } from '../components/admin/WheelManagement';
 import { CampaignManagement } from '../components/admin/CampaignManagement';
 import { EngagementManagement } from '../components/admin/EngagementManagement';
 import { PointStoreManagement } from '../components/admin/PointStoreManagement';
@@ -99,7 +98,6 @@ export const AdminDashboard = () => {
     { id: 'overview',  label: t('admin.overview'),  icon: BarChart3 },
     { id: 'games',     label: t('admin.games'),     icon: Gamepad2 },
     { id: 'luckyCard', label: t('admin.luckyCard'), icon: Zap },
-    { id: 'wheel',     label: language === 'ar' ? 'عجلة أكسي' : 'AXIE Wheel', icon: Star },
     { id: 'banners',   label: language === 'ar' ? 'بانرات الرئيسية' : 'Banners', icon: Megaphone },
     { id: 'commerce',  label: language === 'ar' ? 'التجارة والمدفوعات' : 'Commerce & Payments', icon: DollarSign },
     { id: 'pointStore', label: language === 'ar' ? 'متجر النقاط' : 'Point Store', icon: ShoppingCart },
@@ -167,7 +165,6 @@ export const AdminDashboard = () => {
     switch (currentView) {
       case 'games':     return <GameManagement />;
       case 'luckyCard': return <LuckyCardManagement />;
-      case 'wheel':     return <WheelManagement />;
       case 'banners':   return <CampaignManagement />;
       case 'pointStore': return <PointStoreManagement />;
       case 'services':  return <ServiceManagement />;

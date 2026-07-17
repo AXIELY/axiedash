@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Save, Plus, Trash2, Edit2, Gamepad2 } from 'lucide-react';
+import { Save, Plus, Trash2, CreditCard as Edit2, Gamepad2 } from 'lucide-react';
 import { supabase, GameSettings } from '../../lib/supabase';
 
 export const GameManagement = () => {
@@ -57,7 +57,6 @@ export const GameManagement = () => {
     const names: Record<string, string> = {
       'coin-rush': 'سباق العملات',
       'lucky-card': 'بطاقة الحظ',
-      'wheel': 'عجلة الحظ',
       'ai-battle': 'معركة الذكاء الاصطناعي',
     };
     return names[type] || type;

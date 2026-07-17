@@ -1,5 +1,5 @@
 import { useRef, useEffect, useCallback } from 'react';
-import { Users, Coins, Layers, CircleDot, Zap, Trophy, Package, ArrowRight, ArrowLeft, Lock } from 'lucide-react';
+import { Users, Coins, Layers, Zap, Trophy, Package, ArrowRight, ArrowLeft, Lock } from 'lucide-react';
 
 export interface GameCardData {
   id: string;
@@ -18,7 +18,6 @@ export interface GameCardData {
 
 function GameIcon({ id }: { id: string }) {
   const cls = 'w-6 h-6';
-  if (id === 'wheel')           return <CircleDot className={cls} strokeWidth={1.5} />;
   if (id === 'lucky-card')      return <Layers    className={cls} strokeWidth={1.5} />;
   if (id === 'coin-rush')       return <Coins     className={cls} strokeWidth={1.5} />;
   if (id === 'speed-challenge') return <Zap       className={cls} strokeWidth={1.5} />;

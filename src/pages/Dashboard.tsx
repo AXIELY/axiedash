@@ -19,7 +19,6 @@ import { MyPrizesCenter } from '../components/MyPrizesCenter';
 import { MyOrders } from '../components/MyOrders';
 import { NotificationsPage } from '../components/NotificationsPage';
 import { NotificationSettings } from '../components/NotificationSettings';
-import { WheelPrizesPage } from '../components/WheelPrizesPage';
 import { useAuth } from '../contexts/AuthContext';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useDailyLogin } from '../hooks/useDailyLogin';
@@ -31,7 +30,6 @@ const PAGE_LABELS: Record<string, { ar: string; en: string }> = {
   collection:   { ar: 'المجموعة', en: 'Collection' },
   shop:         { ar: 'المتجر', en: 'Shop' },
   games:        { ar: 'سباق العملات', en: 'Coin Rush' },
-  wheel:        { ar: 'عجلة أكسي', en: 'AXIE Wheel' },
   missions:     { ar: 'المهام', en: 'Missions' },
   achievements: { ar: 'الإنجازات', en: 'Achievements' },
   leaderboard:  { ar: 'المتصدرون', en: 'Leaderboard' },
@@ -42,7 +40,6 @@ const PAGE_LABELS: Record<string, { ar: string; en: string }> = {
   prizes:       { ar: 'جوائزي', en: 'My Prizes' },
   'my-orders':       { ar: 'طلباتي',        en: 'My Orders'      },
   notifications:     { ar: 'الإشعارات',    en: 'Notifications'  },
-  'wheel-prizes':    { ar: 'جوائز العجلة', en: 'Wheel Prizes'   },
 };
 
 export const Dashboard = () => {
@@ -91,7 +88,6 @@ export const Dashboard = () => {
     switch (currentPage) {
       case 'dashboard':    return <DashboardHome setCurrentPage={setCurrentPage} />;
       case 'games':        return <GamesHub initialTab="coin-rush" standalone onOpenMyPrizes={handleOpenMyPrizes} onNavigate={setCurrentPage} />;
-      case 'wheel':        return <GamesHub initialTab="wheel" standalone onOpenMyPrizes={handleOpenMyPrizes} onNavigate={setCurrentPage} />;
       case 'lucky-card':   return <LuckyCardGame />;
       case 'services':     return <ServicesDashboard onBack={() => setCurrentPage('dashboard')} />;
       case 'leaderboard':  return <EnhancedLeaderboard />;
@@ -105,7 +101,6 @@ export const Dashboard = () => {
       case 'my-orders':       return <MyOrders />;
       case 'notifications':          return <NotificationsPage onNavigate={setCurrentPage} />;
       case 'notification-settings':  return <NotificationSettings onBack={() => setCurrentPage('notifications')} />;
-      case 'wheel-prizes':           return <WheelPrizesPage onBack={() => setCurrentPage('wheel')} onNavigate={setCurrentPage} />;
       default:                       return <DashboardHome setCurrentPage={setCurrentPage} />;
     }
   };

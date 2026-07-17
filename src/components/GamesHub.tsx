@@ -1,10 +1,9 @@
 import { useState } from 'react';
-import { Coins, Star } from 'lucide-react';
+import { Coins } from 'lucide-react';
 import { useLanguage } from '../contexts/LanguageContext';
 import { CoinRushGame } from './CoinRushGame';
-import { SpinWheelGame } from './SpinWheelGame';
 
-type GameTab = 'coin-rush' | 'wheel';
+type GameTab = 'coin-rush';
 
 const tabs: { id: GameTab; labelAr: string; labelEn: string; icon: React.ReactNode }[] = [
   {
@@ -12,12 +11,6 @@ const tabs: { id: GameTab; labelAr: string; labelEn: string; icon: React.ReactNo
     labelAr: 'سباق العملات',
     labelEn: 'Coin Rush',
     icon: <Coins className="w-4 h-4" />,
-  },
-  {
-    id: 'wheel',
-    labelAr: 'عجلة أكسي',
-    labelEn: 'AXIE Wheel',
-    icon: <Star className="w-4 h-4" />,
   },
 ];
 
@@ -37,7 +30,6 @@ export function GamesHub({ initialTab, standalone, onOpenMyPrizes, onNavigate }:
     return (
       <div className="flex flex-col min-h-full">
         {activeTab === 'coin-rush' && <CoinRushGame />}
-        {activeTab === 'wheel' && <SpinWheelGame onOpenMyPrizes={onOpenMyPrizes} onNavigate={onNavigate} />}
       </div>
     );
   }
@@ -86,7 +78,6 @@ export function GamesHub({ initialTab, standalone, onOpenMyPrizes, onNavigate }:
       {/* Tab content */}
       <div className="flex-1">
         {activeTab === 'coin-rush' && <CoinRushGame />}
-        {activeTab === 'wheel' && <SpinWheelGame onOpenMyPrizes={onOpenMyPrizes} onNavigate={onNavigate} />}
       </div>
     </div>
   );

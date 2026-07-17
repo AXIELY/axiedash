@@ -45,7 +45,6 @@ export const translations = {
     games: {
       coinRush: 'سباق العملات', coinRushDesc: 'اجمع العملات في 60 ثانية!',
       luckyCard: 'بطاقة الحظ', luckyCardDesc: 'اختر بطاقة واكتشف جائزتك!',
-      wheel: 'عجلة أكسي', wheelDesc: 'أدر العجلة واربح!',
     },
     profile: {
       title: 'ملفي الشخصي', subtitle: 'إحصائياتك وإنجازاتك',
@@ -151,7 +150,6 @@ export const translations = {
     games: {
       coinRush: 'Coin Rush', coinRushDesc: 'Collect coins in 60 seconds!',
       luckyCard: 'Lucky Card', luckyCardDesc: 'Pick a card and win!',
-      wheel: 'AXIE Wheel', wheelDesc: 'Spin and win!',
     },
     profile: {
       title: 'My Profile', subtitle: 'Your stats and achievements',
