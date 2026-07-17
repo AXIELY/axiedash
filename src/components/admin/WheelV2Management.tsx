@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { supabase } from '../../lib/supabase';
 import { useLanguage } from '../../contexts/LanguageContext';
 import { WheelRenderer } from '../wheel-v2/WheelRenderer';
+import { PrizesWorkspace } from '../wheel-v2/PrizesWorkspace';
 import type { WheelV2Prize, PublishValidation, ReleaseResponse, CircuitBreakerState } from '../wheel-v2/types';
 
 type AdminTab = 'overview' | 'settings' | 'economy' | 'prizes' | 'grand-prize' | 'design' | 'leaderboard' | 'audit' | 'publish';
@@ -395,44 +396,16 @@ export function WheelV2Management() {
           <EconomyEditor version={draftVersion} onSave={handleUpdateConfig} saving={saving} isRTL={isRTL} />
         )}
 
-        {/* PRIZES */}
+        {/* PRIZES — modern three-panel workspace */}
         {activeTab === 'prizes' && draftVersion && (
-          <div className="space-y-3">
-            {/* Probability meter */}
-            <div className="rounded-xl p-3" style={{ background: '#120c07', border: '1px solid rgba(214,178,94,0.16)' }}>
-              <div className="flex justify-between text-sm mb-2">
-                <span className="text-[#9c8b6e]">{isRTL ? 'إجمالي الاحتمالات' : 'Total Probability'}</span>
-                <b style={{ color: totalPpm === 1000000 ? '#31d8c5' : totalPpm > 1000000 ? '#e6455c' : '#d9ab4e' }}>
-                  {(totalPpm / 10000).toFixed(4)}%
-                </b>
-              </div>
-              <div className="h-3 rounded-full overflow-hidden" style={{ background: '#0d0906' }}>
-                <div style={{
-                  width: `${Math.min(totalPpm / 10000, 100)}%`,
-                  height: '100%',
-                  background: totalPpm === 1000000 ? 'linear-gradient(90deg, #31d8c5, #f8e7b4)' : 'linear-gradient(90deg, #9a7220, #d9ab4e)',
-                  transition: 'width 0.5s',
-                }} />
-              </div>
-              <div className="flex justify-between text-[10px] text-[#9c8b6e] mt-1">
-                <span>{isRTL ? 'المتبقي' : 'Remaining'}: {(remainingPpm / 10000).toFixed(4)}%</span>
-                <span>{draftPrizes.length} {isRTL ? 'جائزة' : 'prizes'}</span>
-              </div>
-            </div>
-
-            {/* Prize list */}
-            <div className="space-y-2 max-h-[500px] overflow-y-auto">
-              {draftPrizes.map((prize) => (
-                <PrizeEditor key={prize.id} prize={prize} onUpdate={handleUpdatePrize} onDelete={handleDeletePrize} isRTL={isRTL} />
-              ))}
-            </div>
-
-            <button onClick={handleAddPrize}
-              className="w-full rounded-xl py-2.5 text-sm font-bold"
-              style={{ background: '#120c07', border: '1px dashed rgba(214,178,94,0.38)', color: '#9c8b6e' }}>
-              + {isRTL ? 'إضافة جائزة' : 'Add Prize'}
-            </button>
-          </div>
+          <PrizesWorkspace
+            draftVersion={draftVersion}
+            draftPrizes={draftPrizes}
+            onUpdatePrize={handleUpdatePrize}
+            onAddPrize={handleAddPrize}
+            onRefetch={fetchDraft}
+            isRTL={isRTL}
+          />
         )}
 
         {/* GRAND PRIZE */}
