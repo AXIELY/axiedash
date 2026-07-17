@@ -214,6 +214,8 @@ export function useSpinWheelGame() {
     quantity: number;
     progress?: { before: number; after: number; required: number; remaining: number; unlocked: boolean; unlocked_during_batch_at: number | null };
     balanceAfter?: number;
+    payment?: { mode: 'FREE' | 'POINTS'; single_spin_cost: number; points_before: number; points_deducted: number; points_after_cost: number; free_spins_before: number; free_spins_consumed: number; free_spins_after: number };
+    pointsAwarded?: number;
   } | null> => {
     if (!user || !settings.active || spinning) return null;
 
@@ -352,6 +354,8 @@ export function useSpinWheelGame() {
       quantity: mappedQuantity,
       progress: result.progress,
       balanceAfter: result.balance_after,
+      payment: result.payment,
+      pointsAwarded: mappedPointsAwarded,
     };
   }, [user, settings, spinning, freeSpinsUsedToday, refreshUser]);
 

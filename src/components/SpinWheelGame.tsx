@@ -751,6 +751,17 @@ export function SpinWheelGame({ onOpenMyPrizes, onNavigate }: { onOpenMyPrizes?:
 
     await commitSpin(prize);
 
+    // Show cost/reward breakdown toast for paid spins
+    if (result.payment?.mode === 'POINTS' && result.payment.points_deducted > 0) {
+      const cost = result.payment.points_deducted;
+      const reward = result.pointsAwarded ?? 0;
+      const net = reward - cost;
+      const msg = language === 'ar'
+        ? `تم خصم ${cost.toLocaleString('en')} نقطة — الجائزة: ${reward.toLocaleString('en')} نقطة${net !== 0 ? ` — الصافي: ${net > 0 ? '+' : ''}${net.toLocaleString('en')}` : ''}`
+        : `Cost: -${cost} pts — Prize: +${reward} pts${net !== 0 ? ` — Net: ${net > 0 ? '+' : ''}${net}` : ''}`;
+      showToast(msg, net >= 0 ? 'gold' : 'red');
+    }
+
     // Store batch results for the winner modal
     if (result.allResults && result.allResults.length > 1) {
       setBatchResults(result.allResults);
