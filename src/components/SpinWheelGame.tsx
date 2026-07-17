@@ -600,6 +600,8 @@ export function SpinWheelGame({ onOpenMyPrizes, onNavigate }: { onOpenMyPrizes?:
   const { user } = useAuth();
   const {
     settings,
+    publishedVersion,
+    fetchPublishedVersion,
     loading,
     spinning,
     freeSpinsLeft,
@@ -660,19 +662,20 @@ export function SpinWheelGame({ onOpenMyPrizes, onNavigate }: { onOpenMyPrizes?:
 
   // Detect locked grand prize
   useEffect(() => {
-    const grandPrize = settings.prizes.find(p => p.type === 'grand');
+    const grandPrize = (publishedVersion?.prizes ?? settings.prizes).find(p => p.type === 'grand');
     if (!grandPrize) { setLockedPrizeId(null); return; }
     const state = prizeStates.find(s => s.prize_id === grandPrize.id);
     const mode = grandPrize.availability_mode ?? 'ALWAYS_ACTIVE';
     const isLocked = mode === 'LOCKED_BY_GOAL' && state && !state.is_unlocked;
     setLockedPrizeId(isLocked ? grandPrize.id : null);
-  }, [settings.prizes, prizeStates]);
+  }, [publishedVersion, settings.prizes, prizeStates]);
 
   // Entry toast
   useEffect(() => {
     if (lockedPrizeId) {
-      const gp = settings.prizes.find(p => p.id === lockedPrizeId);
-      const target = settings.prizes.find(p => p.id === lockedPrizeId)?.unlock_target_value ?? 30;
+      const publishedPrizes = publishedVersion?.prizes ?? settings.prizes;
+      const gp = publishedPrizes.find(p => p.id === lockedPrizeId);
+      const target = publishedPrizes.find(p => p.id === lockedPrizeId)?.unlock_target_value ?? 30;
       const t = setTimeout(() => showToast(`🔒 جائزة <b>${gp?.name_ar ?? '5000 نقطة'}</b> مقفلة — أكمل <b>${target} لفة</b> لفتحها`), 1200);
       return () => clearTimeout(t);
     }
@@ -716,7 +719,7 @@ export function SpinWheelGame({ onOpenMyPrizes, onNavigate }: { onOpenMyPrizes?:
       };
       animFrameRef.current = requestAnimationFrame(frame);
     });
-  }, [settings.prizes.length, applyRotation]);
+  }, [activePrizes.length, applyRotation]);
 
   const handleSpin = useCallback(async (quantity = 1) => {
     if (!canSpin || spinning || gameState !== 'ready') return;
@@ -806,7 +809,7 @@ export function SpinWheelGame({ onOpenMyPrizes, onNavigate }: { onOpenMyPrizes?:
     setShowWinner(true);
     setGameState('result');
     document.getElementById('aw-zone')?.classList.remove('aw-spinning');
-  }, [canSpin, spinning, gameState, doSpin, commitSpin, settings.prizes.length, sound, animateWheelTo, confetti, streak, user?.id, fetchUserGrandPrizeProgress]);
+  }, [canSpin, spinning, gameState, doSpin, commitSpin, activePrizes.length, sound, animateWheelTo, confetti, streak, user?.id, fetchUserGrandPrizeProgress]);
 
   const closeWinner = useCallback(() => {
     setShowWinner(false);
@@ -844,7 +847,9 @@ export function SpinWheelGame({ onOpenMyPrizes, onNavigate }: { onOpenMyPrizes?:
     );
   }
 
-  const prizes = settings.prizes;
+  // Use the PUBLISHED snapshot as the authoritative prize list for rendering sectors.
+  // Falls back to settings.prizes only if no published version is loaded yet.
+  const prizes = publishedVersion?.prizes ?? settings.prizes;
   const activePrizes = prizes.filter(p => !p.disabled && ((p.probability_bp ?? 0) > 0 || p.weight > 0));
   const totalBp = activePrizes.reduce((s, p) => s + (p.probability_bp ?? 0), 0);
   const useProportional = totalBp === 10000;

@@ -78,6 +78,13 @@ export interface WheelSettings {
   fallback_prize_id: string;
 }
 
+export interface PublishedVersion {
+  id: string;
+  version_number: number;
+  prizes: WheelPrize[];
+  fallback_prize_id: string;
+}
+
 const DEFAULT_SETTINGS: WheelSettings = {
   id: '',
   active: true,
@@ -128,6 +135,7 @@ export interface FulfillmentCaseRef {
 export function useSpinWheelGame() {
   const { user, refreshUser } = useAuth();
   const [settings, setSettings] = useState<WheelSettings>(DEFAULT_SETTINGS);
+  const [publishedVersion, setPublishedVersion] = useState<PublishedVersion | null>(null);
   const [loading, setLoading] = useState(true);
   const [spinning, setSpinning] = useState(false);
   const [freeSpinsUsedToday, setFreeSpinsUsedToday] = useState(0);
@@ -155,6 +163,7 @@ export function useSpinWheelGame() {
     const channel = supabase
       .channel('wheel_settings_sync')
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'wheel_game_settings' }, () => { fetchSettings(); })
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'wheel_probability_versions' }, () => { fetchPublishedVersion(); })
       .subscribe();
     return () => { supabase.removeChannel(channel); };
   }, []);
@@ -175,10 +184,34 @@ export function useSpinWheelGame() {
         .maybeSingle();
       if (err) throw err;
       if (data) setSettings(data as WheelSettings);
+      await fetchPublishedVersion();
     } catch (err) {
       console.error('Error fetching wheel settings:', err);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchPublishedVersion = async () => {
+    try {
+      const { data, error: err } = await supabase
+        .from('wheel_probability_versions')
+        .select('id, version_number, prizes_snapshot, fallback_prize_id')
+        .eq('status', 'PUBLISHED')
+        .order('version_number', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (err) throw err;
+      if (data?.prizes_snapshot) {
+        setPublishedVersion({
+          id: data.id,
+          version_number: data.version_number,
+          prizes: data.prizes_snapshot as WheelPrize[],
+          fallback_prize_id: data.fallback_prize_id,
+        });
+      }
+    } catch (err) {
+      console.error('Error fetching published version:', err);
     }
   };
 
@@ -291,6 +324,23 @@ export function useSpinWheelGame() {
         unlocked_during_batch_at: number | null;
       };
     };
+    // Use the PUBLISHED snapshot as the authoritative prize list for lookup.
+    // The server resolves prizes from wheel_probability_versions.prizes_snapshot,
+    // not wheel_game_settings.prizes (which is the DRAFT list).
+    const versionId = result.probability_version_id;
+    const publishedPrizes = (versionId && publishedVersion?.id === versionId)
+      ? publishedVersion.prizes
+      : (publishedVersion?.prizes ?? settings.prizes);
+
+    // Version mismatch guard: if the server used a different version than what we
+    // rendered, refetch and abort this spin safely (no committed result yet).
+    if (versionId && publishedVersion && versionId !== publishedVersion.id) {
+      await fetchPublishedVersion();
+      setError('تم تحديث إعدادات العجلة، يرجى إعادة المحاولة');
+      setSpinning(false);
+      return null;
+    }
+
     // Map server response to the shape the rest of the hook expects
     const mappedQuantity = result.spin_count || 1;
     const mappedPointsDeducted = result.cost || 0;
@@ -299,9 +349,9 @@ export function useSpinWheelGame() {
 
     const allResults: Array<{ prizeIndex: number; prize: WheelPrize; fallbackUsed?: boolean; originalPrizeId?: string }> = [];
     for (const r of result.results || []) {
-      const p = settings.prizes.find(p => p.id === r.prize_id) ?? settings.prizes[r.prize_index];
+      const p = publishedPrizes.find(p => p.id === r.prize_id);
       if (p) allResults.push({
-        prizeIndex: settings.prizes.findIndex(sp => sp.id === r.prize_id),
+        prizeIndex: publishedPrizes.findIndex(sp => sp.id === r.prize_id),
         prize: p,
         fallbackUsed: r.fallback_used,
         originalPrizeId: r.original_prize_id,
@@ -310,7 +360,7 @@ export function useSpinWheelGame() {
 
     const lastResult = result.results?.[result.results.length - 1];
     const prize = lastResult
-      ? (settings.prizes.find(p => p.id === lastResult.prize_id) ?? settings.prizes[lastResult.prize_index])
+      ? (publishedPrizes.find(p => p.id === lastResult.prize_id) ?? null)
       : null;
     if (!prize) {
       setError('حدث خطأ في تحديد الجائزة.');
@@ -318,7 +368,7 @@ export function useSpinWheelGame() {
       return null;
     }
 
-    const finalPrizeIndex = settings.prizes.findIndex(sp => sp.id === (lastResult?.prize_id ?? ''));
+    const finalPrizeIndex = publishedPrizes.findIndex(sp => sp.id === (lastResult?.prize_id ?? ''));
 
     pendingServerResult.current = {
       prizeIndex: finalPrizeIndex >= 0 ? finalPrizeIndex : (lastResult?.prize_index ?? 0),
@@ -452,6 +502,8 @@ export function useSpinWheelGame() {
 
   return {
     settings,
+    publishedVersion,
+    fetchPublishedVersion,
     loading,
     spinning,
     setSpinning,
