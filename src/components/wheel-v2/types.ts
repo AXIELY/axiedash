@@ -49,6 +49,8 @@ export interface WheelV2Prize {
   sector_angle: number;
 }
 
+export type ReleaseStatus = 'DRAFT' | 'RELEASE_CANDIDATE' | 'PUBLISHED_ACTIVE' | 'ARCHIVED' | 'RELEASE_FAILED';
+
 export interface PublishValidation {
   valid: boolean;
   errors: string[];
@@ -56,6 +58,60 @@ export interface PublishValidation {
   prize_count: number;
   total_ppm: number;
   version_status: string;
+  schema_version?: number;
+}
+
+export interface PublicWheelConfig {
+  available: boolean;
+  reason?: string;
+  active_version_id?: string;
+  release_generation?: number;
+  schema_version?: number;
+  snapshot_checksum?: string;
+  game?: { version_number: number; title_ar: string; title_en: string; subtitle_ar: string; subtitle_en: string; timezone: string };
+  economy?: { single_spin_cost: number; max_spins_per_request: number; allowed_spin_counts: number[] };
+  free_spins?: { free_spins_per_period: number; free_spin_reset_type: string; free_spin_reset_time: string | null };
+  multi_spin?: { allowed_spin_counts: number[]; max_spins_per_request: number };
+  visual?: { visual_config: Record<string, any>; animation_duration_ms: number; animation_turns: number; sounds_enabled: boolean; confetti_enabled: boolean };
+  grand_prize?: { grand_prize_enabled: boolean };
+  panels?: { ticker_enabled: boolean; leaderboard_enabled: boolean };
+  prizes?: WheelV2Prize[];
+}
+
+export interface ReleaseResponse {
+  success: boolean;
+  error?: string;
+  error_code?: string;
+  validation?: PublishValidation;
+  publish_request_id?: string;
+  candidate_version_id?: string;
+  active_version_id?: string;
+  previous_active_version_id?: string | null;
+  release_generation?: number;
+  schema_version_verified?: boolean;
+  snapshot_checksum?: string;
+  public_enabled?: boolean;
+  normal_user_public_read_verified?: boolean;
+  probability_audit_verified?: boolean;
+  renderer_contract_verified?: boolean;
+  responsive_contract_verified?: boolean;
+  economy_dependencies_verified?: boolean;
+  free_spin_dependencies_verified?: boolean;
+  multi_spin_dependencies_verified?: boolean;
+  reward_handlers_verified?: boolean;
+  icons_verified?: boolean;
+  rollback_ready?: boolean;
+  circuit_breaker_ready?: boolean;
+}
+
+export interface CircuitBreakerState {
+  maintenance_mode: boolean;
+  consecutive_critical_failures: number;
+  circuit_breaker_threshold: number;
+  last_health_check_at: string | null;
+  release_generation: number;
+  active_version_id: string | null;
+  public_enabled: boolean;
 }
 
 export interface WheelV2Config {

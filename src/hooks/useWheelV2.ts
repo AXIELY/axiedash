@@ -8,12 +8,25 @@ import type {
   GrandPrizeProgress,
   LeaderboardEntry,
   WinnerEvent,
+  PublicWheelConfig,
 } from '../components/wheel-v2/types';
+
+export type WheelRouteState =
+  | 'LOADING'
+  | 'ACTIVE'
+  | 'DISABLED'
+  | 'MAINTENANCE'
+  | 'NO_ACTIVE_VERSION'
+  | 'NETWORK_ERROR'
+  | 'INVALID_CONTRACT';
 
 export function useWheelV2() {
   const { user, refreshUser } = useAuth();
   const [config, setConfig] = useState<WheelV2Config | null>(null);
+  const [publicConfig, setPublicConfig] = useState<PublicWheelConfig | null>(null);
+  const [routeState, setRouteState] = useState<WheelRouteState>('LOADING');
   const [featureEnabled, setFeatureEnabled] = useState<boolean>(false);
+  const [maintenanceMode, setMaintenanceMode] = useState<boolean>(false);
   const [freeSpins, setFreeSpins] = useState<FreeSpinState | null>(null);
   const [grandPrize, setGrandPrize] = useState<GrandPrizeProgress | null>(null);
   const [winners, setWinners] = useState<WinnerEvent[]>([]);
@@ -22,18 +35,72 @@ export function useWheelV2() {
   const [spinning, setSpinning] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const lastRequestId = useRef<string | null>(null);
+  const lastValidConfig = useRef<PublicWheelConfig | null>(null);
 
   const fetchConfig = useCallback(async () => {
     const { data, error } = await supabase.rpc('get_published_wheel_v2_config');
     if (error) {
       setError(error.message);
+      setRouteState('NETWORK_ERROR');
       return null;
     }
-    if (data && !data.error) {
-      setConfig(data as WheelV2Config);
-      return data as WheelV2Config;
+    if (!data) {
+      setRouteState('NETWORK_ERROR');
+      return null;
     }
-    return null;
+
+    const pub = data as PublicWheelConfig;
+
+    if (!pub.available) {
+      if (pub.reason === 'MAINTENANCE_MODE') {
+        setRouteState('MAINTENANCE');
+      } else {
+        setRouteState('NO_ACTIVE_VERSION');
+      }
+      setPublicConfig(null);
+      setConfig(null);
+      return null;
+    }
+
+    // Validate contract: must have prizes array
+    if (!pub.prizes || !Array.isArray(pub.prizes) || pub.prizes.length === 0) {
+      setRouteState('INVALID_CONTRACT');
+      setPublicConfig(null);
+      setConfig(null);
+      return null;
+    }
+
+    // Keep last-known-good config for smooth switching
+    lastValidConfig.current = pub;
+    setPublicConfig(pub);
+
+    // Map to legacy config shape for backward compatibility
+    const mapped: WheelV2Config = {
+      version_id: pub.active_version_id!,
+      version_number: pub.game?.version_number ?? 1,
+      title_ar: pub.game?.title_ar ?? '',
+      title_en: pub.game?.title_en ?? '',
+      subtitle_ar: pub.game?.subtitle_ar ?? '',
+      subtitle_en: pub.game?.subtitle_en ?? '',
+      single_spin_cost: pub.economy?.single_spin_cost ?? 100,
+      free_spins_per_period: pub.free_spins?.free_spins_per_period ?? 3,
+      free_spin_reset_type: pub.free_spins?.free_spin_reset_type ?? 'DAILY',
+      allowed_spin_counts: pub.multi_spin?.allowed_spin_counts ?? [1, 5, 10],
+      max_spins_per_request: pub.economy?.max_spins_per_request ?? 10,
+      animation_duration_ms: pub.visual?.animation_duration_ms ?? 5600,
+      animation_turns: pub.visual?.animation_turns ?? 6,
+      sounds_enabled: pub.visual?.sounds_enabled ?? true,
+      confetti_enabled: pub.visual?.confetti_enabled ?? true,
+      ticker_enabled: pub.panels?.ticker_enabled ?? true,
+      leaderboard_enabled: pub.panels?.leaderboard_enabled ?? true,
+      grand_prize_enabled: pub.grand_prize?.grand_prize_enabled ?? true,
+      visual_config: pub.visual?.visual_config ?? {},
+      prizes: pub.prizes!,
+    } as any;
+
+    setConfig(mapped);
+    setRouteState('ACTIVE');
+    return pub;
   }, []);
 
   const fetchFeatureFlag = useCallback(async () => {
@@ -43,6 +110,20 @@ export function useWheelV2() {
       .eq('key', 'wheel_v2_enabled')
       .maybeSingle();
     setFeatureEnabled(data?.value === true);
+  }, []);
+
+  const fetchMaintenanceMode = useCallback(async () => {
+    const { data } = await supabase
+      .from('wheel_v2_runtime_settings')
+      .select('maintenance_mode, public_enabled')
+      .eq('id', 1)
+      .maybeSingle();
+    if (data) {
+      setMaintenanceMode(data.maintenance_mode);
+      if (!data.public_enabled) {
+        setFeatureEnabled(false);
+      }
+    }
   }, []);
 
   const fetchFreeSpins = useCallback(async () => {
@@ -85,10 +166,19 @@ export function useWheelV2() {
     if (!user) return;
     (async () => {
       setLoading(true);
-      await Promise.all([fetchConfig(), fetchFeatureFlag(), fetchFreeSpins(), fetchGrandPrize(), fetchWinners(), fetchLeaderboard()]);
+      setRouteState('LOADING');
+      await Promise.all([
+        fetchConfig(),
+        fetchFeatureFlag(),
+        fetchMaintenanceMode(),
+        fetchFreeSpins(),
+        fetchGrandPrize(),
+        fetchWinners(),
+        fetchLeaderboard(),
+      ]);
       setLoading(false);
     })();
-  }, [user, fetchConfig, fetchFeatureFlag, fetchFreeSpins, fetchGrandPrize, fetchWinners, fetchLeaderboard]);
+  }, [user, fetchConfig, fetchFeatureFlag, fetchMaintenanceMode, fetchFreeSpins, fetchGrandPrize, fetchWinners, fetchLeaderboard]);
 
   // Realtime for winner events
   useEffect(() => {
@@ -133,7 +223,6 @@ export function useWheelV2() {
         const response = data as SpinResponse;
 
         if (response.success) {
-          // Refresh all state
           await Promise.all([fetchFreeSpins(), fetchGrandPrize(), fetchWinners(), refreshUser()]);
           lastRequestId.current = null;
         }
@@ -151,7 +240,10 @@ export function useWheelV2() {
 
   return {
     config,
+    publicConfig,
+    routeState,
     featureEnabled,
+    maintenanceMode,
     freeSpins,
     grandPrize,
     winners,
@@ -164,7 +256,16 @@ export function useWheelV2() {
     fetchFreeSpins,
     fetchGrandPrize,
     fetchLeaderboard,
+    lastValidConfig,
     refresh: () =>
-      Promise.all([fetchConfig(), fetchFeatureFlag(), fetchFreeSpins(), fetchGrandPrize(), fetchWinners(), fetchLeaderboard()]),
+      Promise.all([
+        fetchConfig(),
+        fetchFeatureFlag(),
+        fetchMaintenanceMode(),
+        fetchFreeSpins(),
+        fetchGrandPrize(),
+        fetchWinners(),
+        fetchLeaderboard(),
+      ]),
   };
 }

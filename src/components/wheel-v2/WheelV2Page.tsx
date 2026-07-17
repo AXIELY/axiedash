@@ -15,7 +15,7 @@ export function WheelV2Page({ onNavigate }: WheelV2PageProps) {
   const isRTL = language === 'ar';
   const { user } = useAuth();
   const wheel = useWheelV2();
-  const { config, featureEnabled, freeSpins, grandPrize, winners, leaderboard, loading, spinning } = wheel;
+  const { config, routeState, featureEnabled, freeSpins, grandPrize, winners, leaderboard, loading, spinning } = wheel;
 
   const [rotation, setRotation] = useState(0);
   const [selectedSpinCount, setSelectedSpinCount] = useState(1);
@@ -211,34 +211,75 @@ export function WheelV2Page({ onNavigate }: WheelV2PageProps) {
     return Object.values(groups);
   }, [resultData, visiblePrizes]);
 
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center min-h-[60vh]">
-        <div className="text-[#9c8b6e] text-sm">{isRTL ? 'جاري التحميل...' : 'Loading...'}</div>
-      </div>
-    );
-  }
-
-  if (!config) {
+  if (loading || routeState === 'LOADING') {
     return (
       <div className="flex items-center justify-center min-h-[60vh]">
         <div className="text-center">
-          <div className="text-[#9c8b6e] text-lg mb-2">{isRTL ? 'عجلة الحظ غير متاحة' : 'Wheel unavailable'}</div>
-          <div className="text-[#6e5a3e] text-sm">{isRTL ? 'لم يتم نشر إصدار للعجلة بعد' : 'No published version yet'}</div>
+          <div className="inline-block w-10 h-10 border-3 border-[#d9ab4e] border-t-transparent rounded-full animate-spin mb-3" />
+          <div className="text-[#9c8b6e] text-sm">{isRTL ? 'جارٍ تحميل عجلة أكسي...' : 'Loading AXIE Wheel...'}</div>
         </div>
       </div>
     );
   }
 
-  if (!featureEnabled) {
+  if (routeState === 'NETWORK_ERROR') {
     return (
-      <div className="flex items-center justify-center min-h-[60vh]">
-        <div className="text-center">
-          <div className="text-5xl mb-4">{'🎯'}</div>
-          <div className="text-[#f8e7b4] text-xl font-bold mb-2">{isRTL ? 'عجلة أكسي قيد الاختبار حالياً' : 'AXIE Wheel is currently in testing'}</div>
-          <div className="text-[#9c8b6e] text-sm">{isRTL ? 'سيتم تفعيلها قريباً للجميع' : 'It will be available to everyone soon'}</div>
-        </div>
-      </div>
+      <SafeRouteScreen
+        icon="📡"
+        title={isRTL ? 'تعذر تحميل عجلة أكسي' : 'Failed to load AXIE Wheel'}
+        subtitle={isRTL ? 'تحقق من اتصالك بالإنترنت وحاول مرة أخرى' : 'Check your internet connection and try again'}
+        onRetry={() => wheel.fetchConfig()}
+        onHome={onNavigate}
+        isRTL={isRTL}
+      />
+    );
+  }
+
+  if (routeState === 'INVALID_CONTRACT') {
+    return (
+      <SafeRouteScreen
+        icon="⚠️"
+        title={isRTL ? 'تعذر تشغيل الإصدار الحالي من عجلة أكسي' : 'Cannot run the current version of AXIE Wheel'}
+        subtitle={isRTL ? 'يتم العمل على إصلاح المشكلة' : 'The issue is being fixed'}
+        onHome={onNavigate}
+        isRTL={isRTL}
+      />
+    );
+  }
+
+  if (routeState === 'MAINTENANCE') {
+    return (
+      <SafeRouteScreen
+        icon="🔧"
+        title={isRTL ? 'العجلة متوقفة مؤقتًا للصيانة' : 'Wheel is temporarily under maintenance'}
+        subtitle={isRTL ? 'ستعود العجلة قريبًا' : 'The wheel will be back soon'}
+        onHome={onNavigate}
+        isRTL={isRTL}
+      />
+    );
+  }
+
+  if (routeState === 'NO_ACTIVE_VERSION' || !config) {
+    return (
+      <SafeRouteScreen
+        icon="🎯"
+        title={isRTL ? 'لا يوجد إصدار منشور للعجلة حاليًا' : 'No published version for the wheel yet'}
+        subtitle={isRTL ? 'سيتم تفعيلها قريبًا' : 'It will be available soon'}
+        onHome={onNavigate}
+        isRTL={isRTL}
+      />
+    );
+  }
+
+  if (!featureEnabled || routeState === 'DISABLED') {
+    return (
+      <SafeRouteScreen
+        icon="🎯"
+        title={isRTL ? 'عجلة أكسي متوقفة مؤقتًا' : 'AXIE Wheel is currently disabled'}
+        subtitle={isRTL ? 'سيتم تفعيلها قريباً للجميع' : 'It will be available to everyone soon'}
+        onHome={onNavigate}
+        isRTL={isRTL}
+      />
     );
   }
 
@@ -819,5 +860,92 @@ function getPrizeIcon(prize?: WheelV2Prize): string {
     case 'VIP_ACCESS': return '🏆';
     case 'GRAND_PRIZE': return '💎';
     default: return '⭐';
+  }
+}
+
+// ─── Safe Route Screen ─────────────────────────────────────
+interface SafeRouteScreenProps {
+  icon: string;
+  title: string;
+  subtitle?: string;
+  onRetry?: () => void;
+  onHome?: (page: string) => void;
+  isRTL: boolean;
+}
+
+function SafeRouteScreen({ icon, title, subtitle, onRetry, onHome, isRTL }: SafeRouteScreenProps) {
+  return (
+    <div className="flex items-center justify-center min-h-[60vh] px-4">
+      <div className="text-center max-w-sm">
+        <div className="text-5xl mb-4">{icon}</div>
+        <div className="text-[#f8e7b4] text-xl font-bold mb-2">{title}</div>
+        {subtitle && <div className="text-[#9c8b6e] text-sm mb-6">{subtitle}</div>}
+        <div className="flex items-center justify-center gap-3 flex-wrap">
+          {onRetry && (
+            <button onClick={onRetry}
+              className="px-5 py-2.5 rounded-xl font-bold text-sm"
+              style={{ background: 'linear-gradient(180deg, #f8e7b4, #d9ab4e)', color: '#241705' }}>
+              {isRTL ? 'إعادة المحاولة' : 'Retry'}
+            </button>
+          )}
+          {onHome && (
+            <button onClick={() => onHome('home')}
+              className="px-5 py-2.5 rounded-xl font-bold text-sm"
+              style={{ background: '#120c07', border: '1px solid rgba(214,178,94,0.16)', color: '#9c8b6e' }}>
+              {isRTL ? 'العودة للرئيسية' : 'Back to Home'}
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Error Boundary ────────────────────────────────────────
+import { Component, type ReactNode } from 'react';
+
+interface ErrorBoundaryState {
+  hasError: boolean;
+  error: Error | null;
+}
+
+export class WheelV2ErrorBoundary extends Component<{ children: ReactNode; onNavigate?: (page: string) => void }, ErrorBoundaryState> {
+  constructor(props: any) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+
+  static getDerivedStateFromError(error: Error): ErrorBoundaryState {
+    return { hasError: true, error };
+  }
+
+  componentDidCatch(error: Error) {
+    console.error('[WheelV2] Render error caught:', error);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="flex items-center justify-center min-h-[60vh] px-4">
+          <div className="text-center max-w-sm">
+            <div className="text-5xl mb-4">⚠️</div>
+            <div className="text-[#f8e7b4] text-xl font-bold mb-2">
+              {this.props.onNavigate ? 'تعذر تشغيل الإصدار الحالي من عجلة أكسي' : 'Cannot run the current version of AXIE Wheel'}
+            </div>
+            <div className="text-[#9c8b6e] text-sm mb-6">
+              {this.props.onNavigate ? 'يتم العمل على إصلاح المشكلة' : 'The issue is being fixed'}
+            </div>
+            {this.props.onNavigate && (
+              <button onClick={() => this.props.onNavigate?.('home')}
+                className="px-5 py-2.5 rounded-xl font-bold text-sm"
+                style={{ background: '#120c07', border: '1px solid rgba(214,178,94,0.16)', color: '#9c8b6e' }}>
+                {'\u0627\u0644\u0639\u0648\u062F\u0629 \u0644\u0644\u0631\u0626\u064A\u0633\u064A\u0629'}
+              </button>
+            )}
+          </div>
+        </div>
+      );
+    }
+    return this.props.children;
   }
 }

@@ -5,7 +5,7 @@ import { Sidebar } from '../components/Sidebar';
 import { ChatPanel } from '../components/ChatPanel';
 import { DashboardHome } from '../components/DashboardHome';
 import { GamesHub } from '../components/GamesHub';
-import { WheelV2Page } from '../components/wheel-v2/WheelV2Page';
+import { WheelV2Page, WheelV2ErrorBoundary } from '../components/wheel-v2/WheelV2Page';
 import LuckyCardGame from '../components/LuckyCardGame';
 import { EnhancedLeaderboard } from '../components/EnhancedLeaderboard';
 import { Profile } from '../components/Profile';
@@ -91,7 +91,7 @@ export const Dashboard = () => {
       case 'dashboard':    return <DashboardHome setCurrentPage={setCurrentPage} />;
       case 'games':        return <GamesHub initialTab="coin-rush" standalone onOpenMyPrizes={handleOpenMyPrizes} onNavigate={setCurrentPage} />;
       case 'lucky-card':   return <LuckyCardGame />;
-      case 'wheel-v2':    return <WheelV2Page onNavigate={setCurrentPage} />;
+      case 'wheel-v2':    return <WheelV2ErrorBoundary onNavigate={setCurrentPage}><WheelV2Page onNavigate={setCurrentPage} /></WheelV2ErrorBoundary>;
       case 'services':     return <ServicesDashboard onBack={() => setCurrentPage('dashboard')} />;
       case 'leaderboard':  return <EnhancedLeaderboard />;
       case 'profile':      return <Profile />;

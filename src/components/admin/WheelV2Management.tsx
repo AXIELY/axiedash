@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { supabase } from '../../lib/supabase';
 import { useLanguage } from '../../contexts/LanguageContext';
 import { WheelRenderer } from '../wheel-v2/WheelRenderer';
-import type { WheelV2Prize, PublishValidation } from '../wheel-v2/types';
+import type { WheelV2Prize, PublishValidation, ReleaseResponse, CircuitBreakerState } from '../wheel-v2/types';
 
 type AdminTab = 'overview' | 'settings' | 'economy' | 'prizes' | 'grand-prize' | 'design' | 'leaderboard' | 'audit' | 'publish';
 
@@ -43,6 +43,11 @@ export function WheelV2Management() {
   const [validating, setValidating] = useState(false);
   const [publishedPrizes, setPublishedPrizes] = useState<WheelV2Prize[]>([]);
   const [previewMode, setPreviewMode] = useState<'draft' | 'published'>('draft');
+  const [showReleaseModal, setShowReleaseModal] = useState(false);
+  const [releasing, setReleasing] = useState(false);
+  const [releaseResult, setReleaseResult] = useState<ReleaseResponse | null>(null);
+  const [circuitBreaker, setCircuitBreaker] = useState<CircuitBreakerState | null>(null);
+  const publishRequestRef = useRef<string | null>(null);
 
   const fetchOverview = useCallback(async () => {
     const { data } = await supabase.rpc('get_wheel_v2_admin_overview');
@@ -107,7 +112,7 @@ export function WheelV2Management() {
   useEffect(() => {
     (async () => {
       setLoading(true);
-      await Promise.all([fetchOverview(), fetchDraft(), fetchAuditLog(), fetchLeaderboard('week'), fetchPublishedPrizes()]);
+      await Promise.all([fetchOverview(), fetchDraft(), fetchAuditLog(), fetchLeaderboard('week'), fetchPublishedPrizes(), fetchCircuitBreaker()]);
       setLoading(false);
     })();
   }, [fetchOverview, fetchDraft, fetchAuditLog, fetchLeaderboard]);
@@ -190,13 +195,58 @@ export function WheelV2Management() {
   };
 
   const handlePublish = async () => {
-    if (!draftVersion) return;
-    const { data } = await supabase.rpc('publish_wheel_v2_version', { p_version_id: draftVersion.id });
+    if (!draftVersion || releasing) return;
+
+    // Generate unique publish_request_id (idempotency)
+    const requestId = publishRequestRef.current ||
+      (typeof crypto !== 'undefined' && crypto.randomUUID
+        ? crypto.randomUUID()
+        : `release_${Date.now()}_${Math.random().toString(36).slice(2)}`);
+    publishRequestRef.current = requestId;
+
+    setReleasing(true);
+    setReleaseResult(null);
+
+    try {
+      const { data, error } = await supabase.rpc('release_wheel_v2', {
+        p_draft_version_id: draftVersion.id,
+        p_publish_request_id: requestId,
+        p_draft_revision: draftVersion.updated_at ? new Date(draftVersion.updated_at).toISOString() : null,
+      });
+
+      if (error) {
+        setReleaseResult({ success: false, error: error.message, error_code: 'NETWORK_ERROR' });
+        showMessage(`${isRTL ? 'فشل النشر' : 'Release failed'}: ${error.message}`);
+      } else if (data) {
+        const result = data as ReleaseResponse;
+        setReleaseResult(result);
+        if (result.success) {
+          showMessage(isRTL ? 'تم نشر عجلة أكسي وتفعيلها للعامة بنجاح' : 'AXIE Wheel published and activated successfully');
+          await Promise.all([fetchOverview(), fetchDraft(), fetchPublishedPrizes(), fetchPublishValidation(), fetchCircuitBreaker()]);
+        } else {
+          const msg = result.error_code || result.error || 'UNKNOWN';
+          showMessage(`${isRTL ? 'فشل النشر' : 'Release failed'}: ${msg}`);
+        }
+      }
+    } catch (err: any) {
+      setReleaseResult({ success: false, error: err.message, error_code: 'NETWORK_ERROR' });
+      showMessage(`${isRTL ? 'فشل النشر' : 'Release failed'}: ${err.message}`);
+    }
+
+    setReleasing(false);
+    publishRequestRef.current = null;
+  };
+
+  const fetchCircuitBreaker = useCallback(async () => {
+    const { data } = await supabase.rpc('get_wheel_v2_circuit_breaker_state');
+    if (data) setCircuitBreaker(data as CircuitBreakerState);
+  }, []);
+
+  const handleResetCircuitBreaker = async () => {
+    const { data } = await supabase.rpc('reset_wheel_v2_circuit_breaker');
     if (data?.success) {
-      showMessage(isRTL ? 'تم النشر بنجاح!' : 'Published successfully!');
-      await Promise.all([fetchOverview(), fetchDraft(), fetchPublishedPrizes(), fetchPublishValidation()]);
-    } else if (data) {
-      showMessage(`${isRTL ? 'فشل النشر' : 'Publish failed'}: ${data.error}`);
+      showMessage(isRTL ? 'تم إعادة تعيين القاطع' : 'Circuit breaker reset');
+      await fetchCircuitBreaker();
     }
   };
 
@@ -297,7 +347,7 @@ export function WheelV2Management() {
           <div className="space-y-4">
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
               {[
-                { label: isRTL ? 'النسخ المنشورة' : 'Published', value: overview?.versions?.filter((v: any) => v.status === 'PUBLISHED').length ?? 0 },
+                { label: isRTL ? 'النسخ المنشورة' : 'Published', value: overview?.versions?.filter((v: any) => v.status === 'PUBLISHED_ACTIVE' || v.status === 'PUBLISHED').length ?? 0 },
                 { label: isRTL ? 'المسودات' : 'Drafts', value: overview?.versions?.filter((v: any) => v.status === 'DRAFT').length ?? 0 },
                 { label: isRTL ? 'إجمالي السحبات' : 'Total Spins', value: overview?.total_spins ?? 0 },
                 { label: isRTL ? 'إجمالي اللاعبين' : 'Total Users', value: overview?.total_users ?? 0 },
@@ -321,8 +371,8 @@ export function WheelV2Management() {
                     <div className="flex items-center gap-2">
                       <span className="text-[10px] px-2 py-0.5 rounded-full"
                         style={{
-                          background: v.status === 'PUBLISHED' ? 'rgba(49,216,197,0.15)' : v.status === 'DRAFT' ? 'rgba(217,171,78,0.15)' : 'rgba(156,139,110,0.15)',
-                          color: v.status === 'PUBLISHED' ? '#31d8c5' : v.status === 'DRAFT' ? '#d9ab4e' : '#9c8b6e',
+                          background: (v.status === 'PUBLISHED' || v.status === 'PUBLISHED_ACTIVE') ? 'rgba(49,216,197,0.15)' : v.status === 'DRAFT' ? 'rgba(217,171,78,0.15)' : v.status === 'RELEASE_CANDIDATE' ? 'rgba(100,180,255,0.15)' : v.status === 'RELEASE_FAILED' ? 'rgba(230,69,92,0.15)' : 'rgba(156,139,110,0.15)',
+                          color: (v.status === 'PUBLISHED' || v.status === 'PUBLISHED_ACTIVE') ? '#31d8c5' : v.status === 'DRAFT' ? '#d9ab4e' : v.status === 'RELEASE_CANDIDATE' ? '#64b4ff' : v.status === 'RELEASE_FAILED' ? '#e6455c' : '#9c8b6e',
                         }}>
                         {v.status}
                       </span>
@@ -562,12 +612,14 @@ export function WheelV2Management() {
         {/* PUBLISH */}
         {activeTab === 'publish' && draftVersion && (
           <div className="space-y-4">
+            {/* Draft info */}
             <div className="rounded-xl p-4 text-center" style={{ background: '#120c07', border: '1px solid rgba(214,178,94,0.16)' }}>
               <div className="text-sm text-[#9c8b6e] mb-2">{isRTL ? 'الإصدار الحالي للمسودة' : 'Current Draft Version'}</div>
               <b className="text-lg text-[#f8e7b4]">V{draftVersion.version_number}</b>
               <div className="text-xs text-[#9c8b6e] mt-1">{draftVersion.title_en}</div>
             </div>
 
+            {/* Validation controls */}
             <div className="flex items-center justify-between">
               <button onClick={fetchPublishValidation} disabled={validating}
                 className="text-xs px-3 py-1.5 rounded-lg font-bold disabled:opacity-50"
@@ -581,6 +633,7 @@ export function WheelV2Management() {
               )}
             </div>
 
+            {/* Validation summary */}
             {publishValidation && (
               <div className="rounded-xl p-4" style={{ background: '#120c07', border: `1px solid ${publishValidation.valid ? 'rgba(49,216,197,0.3)' : 'rgba(230,69,92,0.3)'}` }}>
                 <div className="flex justify-between text-sm mb-2">
@@ -602,6 +655,7 @@ export function WheelV2Management() {
               </div>
             )}
 
+            {/* Blocking errors */}
             {publishValidation?.errors && publishValidation.errors.length > 0 && (
               <div className="rounded-xl p-3 space-y-1" style={{ background: 'rgba(230,69,92,0.08)', border: '1px solid rgba(230,69,92,0.3)' }}>
                 <div className="text-xs font-bold text-[#e6455c] mb-1">{isRTL ? 'أخطاء مانعة:' : 'Blocking errors:'}</div>
@@ -613,6 +667,7 @@ export function WheelV2Management() {
               </div>
             )}
 
+            {/* Warnings */}
             {publishValidation?.warnings && publishValidation.warnings.length > 0 && (
               <div className="rounded-xl p-3 space-y-1" style={{ background: 'rgba(217,171,78,0.08)', border: '1px solid rgba(214,178,94,0.3)' }}>
                 <div className="text-xs font-bold text-[#d9ab4e] mb-1">{isRTL ? 'تحذيرات:' : 'Warnings:'}</div>
@@ -624,29 +679,146 @@ export function WheelV2Management() {
               </div>
             )}
 
+            {/* All checks passed */}
             {publishValidation && publishValidation.valid && publishValidation.errors.length === 0 && publishValidation.warnings.length === 0 && (
               <div className="rounded-xl p-3 text-center text-xs text-[#31d8c5]" style={{ background: 'rgba(49,216,197,0.08)', border: '1px solid rgba(49,216,197,0.3)' }}>
                 {isRTL ? '✓ جميع الفحوصات نجحت — الإصدار جاهز للنشر' : '✓ All checks passed — version is ready to publish'}
               </div>
             )}
 
-            <button onClick={handlePublish} disabled={!canPublish}
+            {/* Circuit Breaker Status */}
+            {circuitBreaker && (
+              <div className="rounded-xl p-3" style={{ background: circuitBreaker.maintenance_mode ? 'rgba(230,69,92,0.08)' : '#120c07', border: `1px solid ${circuitBreaker.maintenance_mode ? 'rgba(230,69,92,0.3)' : 'rgba(214,178,94,0.16)'}` }}>
+                <div className="text-xs font-bold mb-2" style={{ color: circuitBreaker.maintenance_mode ? '#e6455c' : '#d9ab4e' }}>
+                  {isRTL ? 'حالة القاطع الدوائي' : 'Circuit Breaker State'}
+                </div>
+                <div className="grid grid-cols-2 gap-2 text-xs">
+                  <div>
+                    <span className="text-[#9c8b6e]">{isRTL ? 'الصيانة' : 'Maintenance'}: </span>
+                    <b style={{ color: circuitBreaker.maintenance_mode ? '#e6455c' : '#31d8c5' }}>{circuitBreaker.maintenance_mode ? 'ON' : 'OFF'}</b>
+                  </div>
+                  <div>
+                    <span className="text-[#9c8b6e]">{isRTL ? 'إخفاقات متتالية' : 'Consecutive Failures'}: </span>
+                    <b className="text-[#f8e7b4]">{circuitBreaker.consecutive_critical_failures}/{circuitBreaker.circuit_breaker_threshold}</b>
+                  </div>
+                </div>
+                {circuitBreaker.maintenance_mode && (
+                  <button onClick={handleResetCircuitBreaker}
+                    className="mt-2 text-xs px-3 py-1.5 rounded-lg font-bold"
+                    style={{ background: 'rgba(49,216,197,0.15)', border: '1px solid rgba(49,216,197,0.3)', color: '#31d8c5' }}>
+                    {isRTL ? 'إعادة تعيين القاطع' : 'Reset Circuit Breaker'}
+                  </button>
+                )}
+              </div>
+            )}
+
+            {/* Release result */}
+            {releaseResult && (
+              <div className="rounded-xl p-3 space-y-1" style={{ background: releaseResult.success ? 'rgba(49,216,197,0.08)' : 'rgba(230,69,92,0.08)', border: `1px solid ${releaseResult.success ? 'rgba(49,216,197,0.3)' : 'rgba(230,69,92,0.3)'}` }}>
+                <div className="text-xs font-bold" style={{ color: releaseResult.success ? '#31d8c5' : '#e6455c' }}>
+                  {releaseResult.success
+                    ? (isRTL ? '✓ تم النشر بنجاح' : '✓ Release successful')
+                    : (isRTL ? `✗ فشل: ${releaseResult.error_code || releaseResult.error}` : `✗ Failed: ${releaseResult.error_code || releaseResult.error}`)}
+                </div>
+                {releaseResult.success && (
+                  <div className="text-[10px] text-[#9c8b6e] space-y-0.5">
+                    <div>{isRTL ? 'الجيل' : 'Generation'}: {releaseResult.release_generation}</div>
+                    <div>{isRTL ? 'المجموع الاختباري' : 'Checksum'}: {releaseResult.snapshot_checksum?.slice(0, 12)}...</div>
+                    <div>{isRTL ? 'النسخة السابقة' : 'Rollback ready'}: {releaseResult.rollback_ready ? '✓' : '✗'}</div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Release button — opens confirmation modal */}
+            <button onClick={() => setShowReleaseModal(true)} disabled={!canPublish || releasing}
               className="w-full rounded-xl py-3 font-bold text-sm disabled:opacity-50"
               style={{
                 color: '#241705',
-                background: canPublish ? 'linear-gradient(180deg, #fdf0c8, #d9ab4e, #9a7220)' : '#120c07',
-                border: canPublish ? 'none' : '1px solid rgba(214,178,94,0.16)',
-                boxShadow: canPublish ? '0 5px 0 #5d420c' : 'none',
+                background: canPublish && !releasing ? 'linear-gradient(180deg, #fdf0c8, #d9ab4e, #9a7220)' : '#120c07',
+                border: canPublish && !releasing ? 'none' : '1px solid rgba(214,178,94,0.16)',
+                boxShadow: canPublish && !releasing ? '0 5px 0 #5d420c' : 'none',
               }}>
-              {canPublish
-                ? (isRTL ? '🚀 نشر الإصدار' : '🚀 Publish Version')
-                : (isRTL ? 'غير جاهز للنشر' : 'Not Ready to Publish')}
+              {releasing
+                ? (isRTL ? 'جاري النشر...' : 'Releasing...')
+                : canPublish
+                  ? (isRTL ? '🚀 نشر اللعبة للعامة' : '🚀 Publish Game to Public')
+                  : (isRTL ? 'غير جاهز للنشر' : 'Not Ready to Publish')}
             </button>
 
             <div className="text-xs text-[#9c8b6e] text-center">
               {isRTL
-                ? 'النشر سيؤرشف الإصدار المنشور الحالي ويجعل هذا الإصدار متاحاً للاعبين'
-                : 'Publishing will archive the current published version and make this available to players'}
+                ? 'النشر سيتحقق من جميع الاعتماديات، ينشئ مرشحاً غير قابل للتعديل، يفعله ذرياً، ويتحقق منه بعد التفعيل'
+                : 'Publishing validates all dependencies, compiles an immutable candidate, activates atomically, and verifies post-activation'}
+            </div>
+          </div>
+        )}
+
+        {/* Release Confirmation Modal */}
+        {showReleaseModal && draftVersion && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.7)' }}>
+            <div className="rounded-2xl p-6 max-w-md w-full space-y-4" style={{ background: '#181008', border: '1px solid rgba(214,178,94,0.3)' }}>
+              <h3 className="text-lg font-bold text-[#f8e7b4] text-center">
+                {isRTL ? 'تأكيد النشر والتفعيل' : 'Confirm Release & Activation'}
+              </h3>
+
+              <div className="space-y-2 text-sm">
+                <div className="flex justify-between">
+                  <span className="text-[#9c8b6e]">{isRTL ? 'إصدار المسودة' : 'Draft Version'}</span>
+                  <b className="text-[#f8e7b4]">V{draftVersion.version_number}</b>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-[#9c8b6e]">{isRTL ? 'عدد الجوائز' : 'Prize Count'}</span>
+                  <b className="text-[#f8e7b4]">{publishValidation?.prize_count ?? draftPrizes.length}</b>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-[#9c8b6e]">{isRTL ? 'مجموع الاحتمالات' : 'Probability Total'}</span>
+                  <b style={{ color: totalPpm === 1000000 ? '#31d8c5' : '#e6455c' }}>
+                    {(totalPpm / 10000).toFixed(4)}%
+                  </b>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-[#9c8b6e]">{isRTL ? 'سعر اللفة' : 'Spin Cost'}</span>
+                  <b className="text-[#f8e7b4]">{draftVersion.single_spin_cost} {isRTL ? 'نقطة' : 'pts'}</b>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-[#9c8b6e]">{isRTL ? 'الدورات المجانية' : 'Free Spins'}</span>
+                  <b className="text-[#f8e7b4]">{draftVersion.free_spins_per_period}</b>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-[#9c8b6e]">{isRTL ? 'أعداد اللفات' : 'Spin Counts'}</span>
+                  <b className="text-[#f8e7b4]">{(draftVersion.allowed_spin_counts || [1,5,10]).join(', ')}</b>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-[#9c8b6e]">{isRTL ? 'الإصدار النشط الحالي' : 'Current Active'}</span>
+                  <b className="text-[#d9ab4e]">{overview?.versions?.find((v:any) => v.status === 'PUBLISHED_ACTIVE') ? `V${overview.versions.find((v:any) => v.status === 'PUBLISHED_ACTIVE').version_number}` : (isRTL ? 'لا يوجد' : 'None')}</b>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-[#9c8b6e]">{isRTL ? 'استعادة متاحة' : 'Rollback Available'}</span>
+                  <b style={{ color: overview?.versions?.some((v:any) => v.status === 'PUBLISHED_ACTIVE') ? '#31d8c5' : '#9c8b6e' }}>
+                    {overview?.versions?.some((v:any) => v.status === 'PUBLISHED_ACTIVE') ? '✓' : '✗'}
+                  </b>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-[#9c8b6e]">{isRTL ? 'التحقق' : 'Validation'}</span>
+                  <b style={{ color: publishValidation?.valid ? '#31d8c5' : '#e6455c' }}>
+                    {publishValidation?.valid ? '✓ ' + (isRTL ? 'صالح' : 'Valid') : '✗ ' + (isRTL ? 'غير صالح' : 'Invalid')}
+                  </b>
+                </div>
+              </div>
+
+              <div className="flex gap-2">
+                <button onClick={() => setShowReleaseModal(false)} disabled={releasing}
+                  className="flex-1 rounded-xl py-2.5 text-sm font-bold disabled:opacity-50"
+                  style={{ background: '#120c07', border: '1px solid rgba(214,178,94,0.16)', color: '#9c8b6e' }}>
+                  {isRTL ? 'إلغاء' : 'Cancel'}
+                </button>
+                <button onClick={() => { setShowReleaseModal(false); handlePublish(); }} disabled={releasing || !canPublish}
+                  className="flex-1 rounded-xl py-2.5 text-sm font-bold disabled:opacity-50"
+                  style={{ color: '#241705', background: 'linear-gradient(180deg, #fdf0c8, #d9ab4e, #9a7220)' }}>
+                  {releasing ? '...' : (isRTL ? 'تأكيد النشر والتفعيل' : 'Confirm Release & Activate')}
+                </button>
+              </div>
             </div>
           </div>
         )}
