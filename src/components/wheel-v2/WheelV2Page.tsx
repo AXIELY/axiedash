@@ -28,6 +28,7 @@ export function WheelV2Page({ onNavigate }: WheelV2PageProps) {
   const [skipAnimation, setSkipAnimation] = useState(false);
   const [leaderboardPeriod, setLeaderboardPeriod] = useState<'today' | 'week' | 'all'>('week');
   const [countdown, setCountdown] = useState({ h: 0, m: 0, s: 0 });
+  const [spinError, setSpinError] = useState<string | null>(null);
   const animationRef = useRef<number | null>(null);
 
   // Countdown timer for free spin reset
@@ -73,15 +74,41 @@ export function WheelV2Page({ onNavigate }: WheelV2PageProps) {
   const handleSpinClick = () => {
     if (freeRemaining > 0 && selectedSpinCount === 1) {
       executeSpin(1);
+    } else if (selectedSpinCount === 1 && canAfford) {
+      executeSpin(1);
     } else {
       setShowConfirm(true);
     }
   };
 
+  const getErrorMessage = (error: string): string => {
+    const messages: Record<string, { ar: string; en: string }> = {
+      UNAUTHENTICATED: { ar: 'يجب تسجيل الدخول أولاً', en: 'Please sign in first' },
+      WHEEL_V2_DISABLED: { ar: 'العجلة متوقفة حالياً', en: 'Wheel is currently disabled' },
+      MAINTENANCE_MODE: { ar: 'العجلة تحت الصيانة', en: 'Wheel is under maintenance' },
+      NO_PUBLISHED_VERSION: { ar: 'لا يوجد إصدار منشور', en: 'No published version available' },
+      INSUFFICIENT_POINTS: { ar: 'رصيدك لا يكفي لهذه اللفة', en: 'Insufficient points for this spin' },
+      SPIN_COUNT_NOT_ALLOWED: { ar: 'عدد اللفات غير مسموح', en: 'Spin count not allowed' },
+      ALREADY_SPINNING: { ar: 'لفة جارية بالفعل', en: 'A spin is already in progress' },
+      TRANSACTION_FAILED: { ar: 'فشل تنفيذ اللفة', en: 'Spin transaction failed' },
+    };
+    const msg = messages[error];
+    return msg ? (isRTL ? msg.ar : msg.en) : (isRTL ? 'حدث خطأ غير متوقع' : 'An unexpected error occurred');
+  };
+
   const executeSpin = async (count: number) => {
     setShowConfirm(false);
+    setSpinError(null);
     const response = await wheel.executeSpins(count);
-    if (!response.success || !response.results) return;
+    if (!response.success) {
+      const errMsg = response.error || 'TRANSACTION_FAILED';
+      setSpinError(getErrorMessage(errMsg));
+      return;
+    }
+    if (!response.results || response.results.length === 0) {
+      setSpinError(getErrorMessage('TRANSACTION_FAILED'));
+      return;
+    }
 
     setResultData(response);
     setAnimatingResult(true);
@@ -432,6 +459,27 @@ export function WheelV2Page({ onNavigate }: WheelV2PageProps) {
               </button>
             ))}
           </div>
+
+          {/* Error toast */}
+          {spinError && !animatingResult && !showResult && (
+            <div
+              className="mt-3 max-w-sm mx-auto rounded-xl px-4 py-2.5 text-sm font-bold text-center z-20 relative"
+              style={{
+                background: 'linear-gradient(180deg, #221708, #140d06)',
+                border: '1px solid rgba(230,69,92,0.55)',
+                color: '#ff97a8',
+              }}
+            >
+              {spinError}
+              <button
+                onClick={() => setSpinError(null)}
+                className="absolute top-1.5 left-2 text-[#9c8b6e] hover:text-[#efe6d2]"
+                style={{ fontSize: '10px' }}
+              >
+                ✕
+              </button>
+            </div>
+          )}
 
           {/* Skip animation button */}
           {animatingResult && (
@@ -846,6 +894,11 @@ export function WheelV2Page({ onNavigate }: WheelV2PageProps) {
                     <div>
                       {isRTL ? 'تقدم الجائزة الكبرى' : 'Grand Prize'}: {resultData.grand_prize_progress.before} → {resultData.grand_prize_progress.after}/{resultData.grand_prize_progress.required}
                       {resultData.grand_prize_progress.unlocked && ` ✨ ${isRTL ? 'تم الفتح!' : 'Unlocked!'}`}
+                    </div>
+                  )}
+                  {resultData.streak && resultData.streak.just_completed && (
+                    <div className="text-[#31d8c5]">
+                      🔥 {isRTL ? `أكملت سلسلة الحظ! +${resultData.streak.free_spins_awarded} لفة مجانية` : `Streak complete! +${resultData.streak.free_spins_awarded} free spin(s)`}
                     </div>
                   )}
                 </div>
