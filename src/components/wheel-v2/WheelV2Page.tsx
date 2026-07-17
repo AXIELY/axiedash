@@ -3,7 +3,7 @@ import { useLanguage } from '../../contexts/LanguageContext';
 import { useAuth } from '../../contexts/AuthContext';
 import { useWheelV2 } from '../../hooks/useWheelV2';
 import { WheelRenderer } from './WheelRenderer';
-import { playTickSound, playWinSound, confettiBurst } from './effects';
+import { playTickSound, playWinSound, confettiBurst, cleanupConfetti } from './effects';
 import type { SpinResultItem, WheelV2Prize } from './types';
 
 interface WheelV2PageProps {
@@ -30,6 +30,16 @@ export function WheelV2Page({ onNavigate }: WheelV2PageProps) {
   const [countdown, setCountdown] = useState({ h: 0, m: 0, s: 0 });
   const [spinError, setSpinError] = useState<string | null>(null);
   const animationRef = useRef<number | null>(null);
+  const multiSpinTimerRef = useRef<number | null>(null);
+
+  // Cleanup on unmount: cancel RAF, clear timers, remove confetti canvas
+  useEffect(() => {
+    return () => {
+      if (animationRef.current) cancelAnimationFrame(animationRef.current);
+      if (multiSpinTimerRef.current) clearTimeout(multiSpinTimerRef.current);
+      cleanupConfetti();
+    };
+  }, []);
 
   // Countdown timer for free spin reset
   useEffect(() => {
@@ -70,6 +80,8 @@ export function WheelV2Page({ onNavigate }: WheelV2PageProps) {
   const canAfford = pointsAfterCost >= 0;
 
   const spinOptions = config?.allowed_spin_counts || [1, 5, 10];
+  // 5X and 10X disabled pending verification — only 1X enabled for normal users
+  const MULTI_SPIN_ENABLED = false;
 
   const handleSpinClick = () => {
     if (freeRemaining > 0 && selectedSpinCount === 1) {
@@ -205,7 +217,7 @@ export function WheelV2Page({ onNavigate }: WheelV2PageProps) {
         } else {
           setRotation(targetRotation);
           idx++;
-          setTimeout(animateNext, 400);
+          multiSpinTimerRef.current = window.setTimeout(animateNext, 400);
         }
       };
       animationRef.current = requestAnimationFrame(frame);
@@ -215,6 +227,8 @@ export function WheelV2Page({ onNavigate }: WheelV2PageProps) {
 
   const finishAnimation = (_results: SpinResultItem[]) => {
     setAnimatingResult(false);
+    if (animationRef.current) cancelAnimationFrame(animationRef.current);
+    if (multiSpinTimerRef.current) clearTimeout(multiSpinTimerRef.current);
     if (config?.sounds_enabled) playWinSound();
     if (config?.confetti_enabled) confettiBurst();
     setShowResult(true);
@@ -223,6 +237,15 @@ export function WheelV2Page({ onNavigate }: WheelV2PageProps) {
   const handleSkip = () => {
     setSkipAnimation(true);
     if (animationRef.current) cancelAnimationFrame(animationRef.current);
+    if (multiSpinTimerRef.current) clearTimeout(multiSpinTimerRef.current);
+    cleanupConfetti();
+    setAnimatingResult(false);
+    setShowResult(true);
+  };
+
+  const closeResultModal = () => {
+    setShowResult(false);
+    cleanupConfetti();
   };
 
   // Group results for summary
@@ -402,7 +425,7 @@ export function WheelV2Page({ onNavigate }: WheelV2PageProps) {
           {/* Spin Button */}
           <button
             onClick={handleSpinClick}
-            disabled={spinning || animatingResult || (!canAfford && freeRemaining === 0)}
+            disabled={spinning || animatingResult || wheel.freeSpinStatus !== 'READY' || (!canAfford && freeRemaining === 0)}
             className="mt-6 relative z-10 font-['Lalezar',cursive] text-2xl rounded-2xl px-8 py-3.5 transition-transform"
             style={{
               color: '#241705',
@@ -435,29 +458,34 @@ export function WheelV2Page({ onNavigate }: WheelV2PageProps) {
 
           {/* Multi-spin options */}
           <div className="flex gap-2 mt-4 flex-wrap justify-center z-10 relative">
-            {spinOptions.map((count) => (
+            {spinOptions.map((count) => {
+              const isMultiDisabled = count > 1 && !MULTI_SPIN_ENABLED;
+              return (
               <button
                 key={count}
-                onClick={() => setSelectedSpinCount(count)}
-                disabled={spinning || animatingResult}
+                onClick={() => !isMultiDisabled && setSelectedSpinCount(count)}
+                disabled={spinning || animatingResult || isMultiDisabled}
                 className="rounded-lg px-3.5 py-1.5 text-xs font-bold transition-all"
                 style={{
-                  background: selectedSpinCount === count ? 'linear-gradient(180deg, #f8e7b4, #d9ab4e)' : '#120c07',
-                  border: `1px solid ${selectedSpinCount === count ? 'transparent' : 'rgba(214,178,94,0.16)'}`,
-                  color: selectedSpinCount === count ? '#241705' : '#9c8b6e',
-                  cursor: spinning || animatingResult ? 'not-allowed' : 'pointer',
+                  background: isMultiDisabled ? '#0a0604' : selectedSpinCount === count ? 'linear-gradient(180deg, #f8e7b4, #d9ab4e)' : '#120c07',
+                  border: `1px solid ${isMultiDisabled ? 'rgba(214,178,94,0.08)' : selectedSpinCount === count ? 'transparent' : 'rgba(214,178,94,0.16)'}`,
+                  color: isMultiDisabled ? 'rgba(214,178,94,0.3)' : selectedSpinCount === count ? '#241705' : '#9c8b6e',
+                  cursor: isMultiDisabled || spinning || animatingResult ? 'not-allowed' : 'pointer',
                   minHeight: '44px',
                   minWidth: '80px',
                 }}
               >
-                {isRTL ? `سحب ×${count}` : `Spin ×${count}`}
-                {count > 1 && (
+                {isMultiDisabled
+                  ? (isRTL ? 'قيد الاختبار' : 'Testing')
+                  : (isRTL ? `سحب ×${count}` : `Spin ×${count}`)}
+                {count > 1 && !isMultiDisabled && (
                   <span className="block text-[10px] opacity-80">
                     {count * config.single_spin_cost} {isRTL ? 'نقطة' : 'pts'}
                   </span>
                 )}
               </button>
-            ))}
+              );
+            })}
           </div>
 
           {/* Error toast */}
@@ -605,10 +633,26 @@ export function WheelV2Page({ onNavigate }: WheelV2PageProps) {
                 <span className="text-[11px] text-[#9c8b6e]">{isRTL ? 'نقاطك' : 'Your Points'}</span>
               </div>
               <div className="rounded-xl p-3 text-center" style={{ background: '#120c07', border: '1px solid rgba(214,178,94,0.16)' }}>
-                <b className="font-['Lalezar',cursive] text-2xl text-[#f8e7b4] block leading-tight">
-                  {freeRemaining}
-                </b>
-                <span className="text-[11px] text-[#9c8b6e]">{isRTL ? 'محاولاتك' : 'Free Spins'}</span>
+                {wheel.freeSpinStatus === 'ERROR' ? (
+                  <>
+                    <b className="font-['Lalezar',cursive] text-base text-[#ff97a8] block leading-tight">
+                      {isRTL ? 'تعذر التحميل' : 'Error'}
+                    </b>
+                    <span className="text-[10px] text-[#9c8b6e]">{isRTL ? 'محاولاتك' : 'Free Spins'}</span>
+                  </>
+                ) : wheel.freeSpinStatus === 'LOADING' ? (
+                  <>
+                    <b className="font-['Lalezar',cursive] text-2xl text-[#9c8b6e] block leading-tight">…</b>
+                    <span className="text-[11px] text-[#9c8b6e]">{isRTL ? 'محاولاتك' : 'Free Spins'}</span>
+                  </>
+                ) : (
+                  <>
+                    <b className="font-['Lalezar',cursive] text-2xl text-[#f8e7b4] block leading-tight">
+                      {freeRemaining}
+                    </b>
+                    <span className="text-[11px] text-[#9c8b6e]">{isRTL ? 'محاولاتك' : 'Free Spins'}</span>
+                  </>
+                )}
               </div>
             </div>
           </div>
@@ -796,7 +840,7 @@ export function WheelV2Page({ onNavigate }: WheelV2PageProps) {
             )}
             <button
               onClick={() => executeSpin(selectedSpinCount)}
-              disabled={!canAfford}
+              disabled={!canAfford || wheel.freeSpinStatus !== 'READY'}
               className="w-full rounded-xl py-3 font-bold text-sm transition-transform disabled:opacity-50"
               style={{
                 color: '#241705',
@@ -816,7 +860,7 @@ export function WheelV2Page({ onNavigate }: WheelV2PageProps) {
         <div
           className="fixed inset-0 z-50 grid place-items-center p-4"
           style={{ background: 'rgba(8,5,2,0.84)', backdropFilter: 'blur(6px)' }}
-          onClick={() => setShowResult(false)}
+          onClick={closeResultModal}
         >
           <div
             className="rounded-3xl p-8 max-w-md w-full text-center relative"
@@ -907,7 +951,7 @@ export function WheelV2Page({ onNavigate }: WheelV2PageProps) {
 
             <div className="flex gap-2 justify-center">
               <button
-                onClick={() => setShowResult(false)}
+                onClick={closeResultModal}
                 className="rounded-xl px-6 py-2.5 font-bold text-sm transition-transform"
                 style={{
                   color: '#241705',
@@ -920,7 +964,7 @@ export function WheelV2Page({ onNavigate }: WheelV2PageProps) {
               </button>
               {onNavigate && (
                 <button
-                  onClick={() => { setShowResult(false); onNavigate('my-prizes'); }}
+                  onClick={() => { closeResultModal(); onNavigate('my-prizes'); }}
                   className="rounded-xl px-6 py-2.5 font-bold text-sm transition-transform"
                   style={{
                     color: '#f8e7b4',

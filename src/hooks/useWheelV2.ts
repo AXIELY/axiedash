@@ -20,6 +20,8 @@ export type WheelRouteState =
   | 'NETWORK_ERROR'
   | 'INVALID_CONTRACT';
 
+export type FreeSpinStatus = 'LOADING' | 'READY' | 'ERROR';
+
 export function useWheelV2() {
   const { user, refreshUser } = useAuth();
   const [config, setConfig] = useState<WheelV2Config | null>(null);
@@ -28,6 +30,7 @@ export function useWheelV2() {
   const [featureEnabled, setFeatureEnabled] = useState<boolean>(false);
   const [maintenanceMode, setMaintenanceMode] = useState<boolean>(false);
   const [freeSpins, setFreeSpins] = useState<FreeSpinState | null>(null);
+  const [freeSpinStatus, setFreeSpinStatus] = useState<FreeSpinStatus>('LOADING');
   const [grandPrize, setGrandPrize] = useState<GrandPrizeProgress | null>(null);
   const [winners, setWinners] = useState<WinnerEvent[]>([]);
   const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>([]);
@@ -132,10 +135,14 @@ export function useWheelV2() {
   }, []);
 
   const fetchFreeSpins = useCallback(async () => {
+    setFreeSpinStatus('LOADING');
     const { data, error } = await supabase.rpc('get_wheel_v2_free_spins_remaining');
-    if (!error && data && !data.error) {
-      setFreeSpins(data as FreeSpinState);
+    if (error || !data || data.error) {
+      setFreeSpinStatus('ERROR');
+      return;
     }
+    setFreeSpins(data as FreeSpinState);
+    setFreeSpinStatus('READY');
   }, []);
 
   const fetchGrandPrize = useCallback(async () => {
@@ -230,6 +237,9 @@ export function useWheelV2() {
         if (response.success) {
           await Promise.all([fetchFreeSpins(), fetchGrandPrize(), fetchWinners(), refreshUser()]);
           lastRequestId.current = null;
+        } else {
+          // Clear request ID on failure so retry generates a new one
+          lastRequestId.current = null;
         }
 
         return response;
@@ -250,6 +260,7 @@ export function useWheelV2() {
     featureEnabled,
     maintenanceMode,
     freeSpins,
+    freeSpinStatus,
     grandPrize,
     winners,
     leaderboard,

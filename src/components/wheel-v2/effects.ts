@@ -58,24 +58,45 @@ interface ConfettiParticle {
   life: number;
 }
 
+const MAX_PARTICLES = 300;
+
 let particles: ConfettiParticle[] = [];
 let canvas: HTMLCanvasElement | null = null;
 let ctx2d: CanvasRenderingContext2D | null = null;
-let animating = false;
+let rafId: number | null = null;
+let running = false;
+let resizeListener: (() => void) | null = null;
+
+function clearCanvas() {
+  if (ctx2d && canvas) {
+    ctx2d.clearRect(0, 0, canvas.width, canvas.height);
+  }
+}
+
+function stopLoop() {
+  if (rafId !== null) {
+    cancelAnimationFrame(rafId);
+    rafId = null;
+  }
+  running = false;
+}
 
 function loop() {
-  if (!ctx2d || !canvas) return;
+  if (!ctx2d || !canvas) {
+    stopLoop();
+    return;
+  }
   ctx2d.clearRect(0, 0, canvas.width, canvas.height);
-  particles.forEach((p) => {
+  for (const p of particles) {
     p.x += p.vx;
     p.y += p.vy;
     p.vy += p.g;
     p.rot += p.vr;
     p.life -= 0.008;
-  });
+  }
   particles = particles.filter((p) => p.life > 0 && p.y < (canvas?.height ?? 0) + 30);
-  particles.forEach((p) => {
-    if (!ctx2d) return;
+  for (const p of particles) {
+    if (!ctx2d) break;
     ctx2d.save();
     ctx2d.translate(p.x, p.y);
     ctx2d.rotate((p.rot * Math.PI) / 180);
@@ -83,22 +104,41 @@ function loop() {
     ctx2d.fillStyle = p.color;
     ctx2d.fillRect(-p.size / 2, -p.size / 2, p.size, p.size * 1.6);
     ctx2d.restore();
-  });
-  if (particles.length) {
-    requestAnimationFrame(loop);
+  }
+  if (particles.length > 0) {
+    rafId = requestAnimationFrame(loop);
   } else {
-    animating = false;
+    clearCanvas();
+    particles = [];
+    stopLoop();
   }
 }
 
 export function confettiBurst() {
   if (typeof window === 'undefined') return;
+
+  // Cancel any existing loop and clear particles before starting a new burst
+  stopLoop();
+  particles = [];
+
   if (!canvas) {
     canvas = document.createElement('canvas');
     canvas.id = 'wheel-v2-confetti';
     canvas.style.cssText = 'position:fixed;inset:0;pointer-events:none;z-index:60';
     document.body.appendChild(canvas);
+
+    resizeListener = () => {
+      if (!canvas) return;
+      const dpr = window.devicePixelRatio || 1;
+      canvas.width = window.innerWidth * dpr;
+      canvas.height = window.innerHeight * dpr;
+      canvas.style.width = `${window.innerWidth}px`;
+      canvas.style.height = `${window.innerHeight}px`;
+      if (ctx2d) ctx2d.scale(dpr, dpr);
+    };
+    window.addEventListener('resize', resizeListener);
   }
+
   const dpr = window.devicePixelRatio || 1;
   canvas.width = window.innerWidth * dpr;
   canvas.height = window.innerHeight * dpr;
@@ -111,7 +151,8 @@ export function confettiBurst() {
   const cx = window.innerWidth / 2;
   const cy = window.innerHeight / 2.4;
 
-  for (let i = 0; i < 150; i++) {
+  const burstCount = Math.min(150, MAX_PARTICLES);
+  for (let i = 0; i < burstCount; i++) {
     particles.push({
       x: cx,
       y: cy,
@@ -126,18 +167,21 @@ export function confettiBurst() {
     });
   }
 
-  if (!animating) {
-    animating = true;
-    loop();
-  }
+  running = true;
+  rafId = requestAnimationFrame(loop);
 }
 
 export function cleanupConfetti() {
+  stopLoop();
+  particles = [];
+  clearCanvas();
+  if (resizeListener) {
+    window.removeEventListener('resize', resizeListener);
+    resizeListener = null;
+  }
   if (canvas) {
     canvas.remove();
     canvas = null;
     ctx2d = null;
-    particles = [];
-    animating = false;
   }
 }
