@@ -19,6 +19,7 @@ import { PointStoreManagement } from '../components/admin/PointStoreManagement';
 import { CommerceAdmin } from '../components/admin/CommerceAdmin';
 import { UsersManagement } from '../components/admin/UsersManagement';
 import { NotificationAdmin } from '../components/admin/NotificationAdmin';
+import { WheelV2Management } from '../components/admin/WheelV2Management';
 
 interface DashboardStats {
   totalUsers: number; totalOrders: number; pendingOrders: number;
@@ -98,6 +99,7 @@ export const AdminDashboard = () => {
     { id: 'overview',  label: t('admin.overview'),  icon: BarChart3 },
     { id: 'games',     label: t('admin.games'),     icon: Gamepad2 },
     { id: 'luckyCard', label: t('admin.luckyCard'), icon: Zap },
+    { id: 'wheelV2',  label: language === 'ar' ? 'عجلة V2' : 'Wheel V2', icon: Zap },
     { id: 'banners',   label: language === 'ar' ? 'بانرات الرئيسية' : 'Banners', icon: Megaphone },
     { id: 'commerce',  label: language === 'ar' ? 'التجارة والمدفوعات' : 'Commerce & Payments', icon: DollarSign },
     { id: 'pointStore', label: language === 'ar' ? 'متجر النقاط' : 'Point Store', icon: ShoppingCart },
@@ -165,6 +167,7 @@ export const AdminDashboard = () => {
     switch (currentView) {
       case 'games':     return <GameManagement />;
       case 'luckyCard': return <LuckyCardManagement />;
+      case 'wheelV2':  return <WheelV2Management />;
       case 'banners':   return <CampaignManagement />;
       case 'pointStore': return <PointStoreManagement />;
       case 'services':  return <ServiceManagement />;

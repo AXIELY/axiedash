@@ -30,6 +30,7 @@ export const Sidebar = ({ currentPage, setCurrentPage, mobileOpen, onMobileClose
     { id: 'collection',   label: t('nav.collection'),   icon: Gem },
     { id: 'shop',         label: t('nav.shop'),         icon: ShoppingBag },
     { id: 'games',        label: isRTL ? 'سباق العملات' : 'Coin Rush',  icon: Dices },
+    { id: 'wheel-v2',     label: isRTL ? 'عجلة أكسي' : 'AXIE Wheel',  icon: Dices },
     { id: 'missions',     label: t('nav.missions'),     icon: ListChecks },
     { id: 'achievements', label: t('nav.achievements'), icon: Award },
     { id: 'leaderboard',  label: t('nav.leaderboard'),  icon: Medal },

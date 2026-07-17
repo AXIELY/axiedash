@@ -5,6 +5,7 @@ import { Sidebar } from '../components/Sidebar';
 import { ChatPanel } from '../components/ChatPanel';
 import { DashboardHome } from '../components/DashboardHome';
 import { GamesHub } from '../components/GamesHub';
+import { WheelV2Page } from '../components/wheel-v2/WheelV2Page';
 import LuckyCardGame from '../components/LuckyCardGame';
 import { EnhancedLeaderboard } from '../components/EnhancedLeaderboard';
 import { Profile } from '../components/Profile';
@@ -35,6 +36,7 @@ const PAGE_LABELS: Record<string, { ar: string; en: string }> = {
   leaderboard:  { ar: 'المتصدرون', en: 'Leaderboard' },
   activity:     { ar: 'النشاط', en: 'Activity' },
   'lucky-card': { ar: 'بطاقة الحظ', en: 'Lucky Card' },
+  'wheel-v2':    { ar: 'عجلة أكسي', en: 'AXIE Wheel' },
   services:     { ar: 'الخدمات', en: 'Services' },
   support:      { ar: 'الدعم', en: 'Support' },
   prizes:       { ar: 'جوائزي', en: 'My Prizes' },
@@ -89,6 +91,7 @@ export const Dashboard = () => {
       case 'dashboard':    return <DashboardHome setCurrentPage={setCurrentPage} />;
       case 'games':        return <GamesHub initialTab="coin-rush" standalone onOpenMyPrizes={handleOpenMyPrizes} onNavigate={setCurrentPage} />;
       case 'lucky-card':   return <LuckyCardGame />;
+      case 'wheel-v2':    return <WheelV2Page onNavigate={setCurrentPage} />;
       case 'services':     return <ServicesDashboard onBack={() => setCurrentPage('dashboard')} />;
       case 'leaderboard':  return <EnhancedLeaderboard />;
       case 'profile':      return <Profile />;

@@ -1791,3 +1791,10 @@
   .lc-cards { --lc-card-w: clamp(140px, 44vw, 165px); }
 }
 
+/* ─── AXIE Wheel V2 Animations ──────────────────────────────────── */
+@keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0.22; } }
+@keyframes breath { 0%, 100% { transform: scale(1); opacity: 0.85; } 50% { transform: scale(1.07); opacity: 1; } }
+@keyframes rays { to { transform: rotate(360deg); } }
+@keyframes bob { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-7px); } }
+@keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
+
