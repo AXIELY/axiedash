@@ -851,8 +851,8 @@ export function SpinWheelGame({ onOpenMyPrizes, onNavigate }: { onOpenMyPrizes?:
     });
   })();
   const isBusy = gameState === 'spinning' || gameState === 'revealing';
-  const effectiveFreeSpins = freeSpinsLeft + bonusSpin;
-  const spinCost = settings.spin_cost_points || 100;
+  const effectiveFreeSpins = freeSpinsLeft;
+  const spinCost = settings.single_spin_cost || settings.spin_cost_points || 100;
   const userPoints = user?.points || 0;
 
   // Grand prize info — read from published config
@@ -1186,10 +1186,10 @@ export function SpinWheelGame({ onOpenMyPrizes, onNavigate }: { onOpenMyPrizes?:
               {isBusy
                 ? (language === 'ar' ? 'العجلة تدور...' : 'Spinning...')
                 : effectiveFreeSpins > 0
-                  ? (language === 'ar' ? `ابدأ السحب (${effectiveFreeSpins} مجاني)` : `Spin Free (${effectiveFreeSpins})`)
+                  ? (language === 'ar' ? 'ابدأ السحب — مجاني' : 'Spin — Free')
                   : userPoints >= spinCost
                     ? (language === 'ar' ? `🎰 أدر العجلة — ${spinCost} نقطة` : `Spin — ${spinCost} pts`)
-                    : (language === 'ar' ? '🔒 رصيد غير كافٍ' : 'Insufficient points')}
+                    : (language === 'ar' ? '🔒 رصيد النقاط غير كافٍ' : 'Insufficient points')}
             </button>
 
             <div style={{ marginTop: 10, fontSize: 13, color: '#9c8b6e' }}>
@@ -1208,7 +1208,7 @@ export function SpinWheelGame({ onOpenMyPrizes, onNavigate }: { onOpenMyPrizes?:
                 const cost = getSpinCost(mult);
                 const isDisabled = mult > 1 && !settings.multi_spin_enabled;
                 const affordable = canAffordSpin(mult);
-                const isFree = mult === 1 && freeSpinsLeft > 0;
+                const isFree = mult === 1 && effectiveFreeSpins > 0;
                 return (
                   <button key={mult} disabled={!affordable || isBusy || isDisabled}
                     onClick={() => mult > 1 ? setShowMultiSpinConfirm(mult) : handleSpin(1)}

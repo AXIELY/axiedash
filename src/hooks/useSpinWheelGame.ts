@@ -130,7 +130,7 @@ export function useSpinWheelGame() {
   const [settings, setSettings] = useState<WheelSettings>(DEFAULT_SETTINGS);
   const [loading, setLoading] = useState(true);
   const [spinning, setSpinning] = useState(false);
-  const [spinsToday, setSpinsToday] = useState(0);
+  const [freeSpinsUsedToday, setFreeSpinsUsedToday] = useState(0);
   const [history, setHistory] = useState<WheelPrize[]>([]);
   const [lastWin, setLastWin] = useState<WheelPrize | null>(null);
   const [lastFulfillmentCase, setLastFulfillmentCase] = useState<FulfillmentCaseRef | null>(null);
@@ -161,7 +161,7 @@ export function useSpinWheelGame() {
 
   useEffect(() => {
     if (user?.id) {
-      fetchSpinsToday();
+      fetchFreeSpinsUsedToday();
       fetchPrizeStates();
     }
   }, [user?.id]);
@@ -191,19 +191,19 @@ export function useSpinWheelGame() {
     }
   };
 
-  const fetchSpinsToday = async () => {
+  const fetchFreeSpinsUsedToday = async () => {
     try {
       const today = new Date();
       today.setHours(0, 0, 0, 0);
       const { count } = await supabase
-        .from('game_logs')
+        .from('spin_requests')
         .select('*', { count: 'exact', head: true })
         .eq('user_id', user!.id)
-        .eq('game_type', 'wheel')
-        .gte('played_at', today.toISOString());
-      setSpinsToday(count || 0);
+        .eq('spin_type', 'free')
+        .gte('created_at', today.toISOString());
+      setFreeSpinsUsedToday(count || 0);
     } catch (err) {
-      console.error('Error fetching spins today:', err);
+      console.error('Error fetching free spins used today:', err);
     }
   };
 
@@ -221,12 +221,10 @@ export function useSpinWheelGame() {
     setSpinning(true);
 
     const clientRequestId = crypto.randomUUID();
-    const paymentMode = quantity === 1 && Math.max(settings.free_daily_spins - spinsToday, 0) > 0 ? 'free' : 'points';
 
     const { data, error: rpcErr } = await supabase.rpc('perform_spin_batch', {
       p_spin_count: quantity,
       p_client_request_id: clientRequestId,
-      p_payment_mode: paymentMode,
     });
 
     if (rpcErr || !data?.success) {
@@ -314,8 +312,9 @@ export function useSpinWheelGame() {
       setError(null);
     }
 
-    // Refresh user balance immediately after server confirms deduction
+    // Refresh user balance and free-spin count from authoritative server state
     refreshUser();
+    fetchFreeSpinsUsedToday();
 
     return {
       prizeIndex: finalPrizeIndex >= 0 ? finalPrizeIndex : (lastResult?.prize_index ?? 0),
@@ -325,7 +324,7 @@ export function useSpinWheelGame() {
       progress: result.progress,
       balanceAfter: result.balance_after,
     };
-  }, [user, settings, spinning, spinsToday, refreshUser]);
+  }, [user, settings, spinning, freeSpinsUsedToday, refreshUser]);
 
   const commitSpin = useCallback(async (_prize: WheelPrize) => {
     if (!user) return;
@@ -337,7 +336,8 @@ export function useSpinWheelGame() {
 
         const prizesToAdd = allResults?.length ? allResults.map(r => r.prize) : [confirmedPrize];
         setHistory(prev => [...prizesToAdd.reverse(), ...prev].slice(0, 10));
-        setSpinsToday(prev => prev + (quantity || 1));
+        // Refresh authoritative free-spin count from server instead of incrementing local state
+        fetchFreeSpinsUsedToday();
         if (confirmedPrize.type !== 'miss') setLastWin(confirmedPrize);
 
         const manualPrizes = (allResults?.length ? allResults : [{ prize: confirmedPrize, prizeIndex: 0 }])
@@ -401,7 +401,7 @@ export function useSpinWheelGame() {
     return (data as { success: boolean; progress: Array<Record<string, unknown>> })?.progress || [];
   }, [user]);
 
-  const freeSpinsLeft = Math.max(settings.free_daily_spins - spinsToday, 0);
+  const freeSpinsLeft = Math.max(settings.free_daily_spins - freeSpinsUsedToday, 0);
   const canSpin = !spinning && settings.active && (
     freeSpinsLeft > 0 || (user?.points || 0) >= settings.single_spin_cost
   );
@@ -422,7 +422,7 @@ export function useSpinWheelGame() {
     loading,
     spinning,
     setSpinning,
-    spinsToday,
+    freeSpinsUsedToday,
     freeSpinsLeft,
     canSpin,
     history,
