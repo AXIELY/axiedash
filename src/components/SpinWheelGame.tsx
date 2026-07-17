@@ -681,6 +681,28 @@ export function SpinWheelGame({ onOpenMyPrizes, onNavigate }: { onOpenMyPrizes?:
     }
   }, [lockedPrizeId]);
 
+  // Use the PUBLISHED snapshot as the authoritative prize list for rendering sectors.
+  // Falls back to settings.prizes only if no published version is loaded yet.
+  const prizes = Array.isArray(publishedVersion?.prizes) && publishedVersion!.prizes!.length > 0
+    ? publishedVersion!.prizes
+    : (Array.isArray(settings?.prizes) ? settings.prizes : []);
+  const activePrizes = prizes.filter(p => !p.disabled && ((p.probability_bp ?? 0) > 0 || p.weight > 0));
+  const totalBp = activePrizes.reduce((s, p) => s + (p.probability_bp ?? 0), 0);
+  const useProportional = totalBp === 10000;
+  const n = activePrizes.length;
+
+  // Build cumulative angle map for proportional sectors
+  const sectorAngles = (() => {
+    if (!useProportional || n === 0) return activePrizes.map((_, i) => ({ start: i * (360 / (n || 1)), size: 360 / (n || 1) }));
+    let cumDeg = 0;
+    return activePrizes.map(p => {
+      const size = ((p.probability_bp ?? 0) / 10000) * 360;
+      const start = cumDeg;
+      cumDeg += size;
+      return { start, size };
+    });
+  })();
+
   const applyRotation = useCallback((deg: number) => {
     rotationRef.current = deg;
     if (rotatorRef.current) rotatorRef.current.style.transform = `rotate(${deg}deg)`;
@@ -847,25 +869,20 @@ export function SpinWheelGame({ onOpenMyPrizes, onNavigate }: { onOpenMyPrizes?:
     );
   }
 
-  // Use the PUBLISHED snapshot as the authoritative prize list for rendering sectors.
-  // Falls back to settings.prizes only if no published version is loaded yet.
-  const prizes = publishedVersion?.prizes ?? settings.prizes;
-  const activePrizes = prizes.filter(p => !p.disabled && ((p.probability_bp ?? 0) > 0 || p.weight > 0));
-  const totalBp = activePrizes.reduce((s, p) => s + (p.probability_bp ?? 0), 0);
-  const useProportional = totalBp === 10000;
-  const n = activePrizes.length;
+  if (activePrizes.length === 0) {
+    return (
+      <div className="flex flex-col items-center justify-center py-16 px-4 text-center max-w-md mx-auto">
+        <AlertCircle className="w-12 h-12 mx-auto mb-4" style={{ color: '#e6a84e' }} />
+        <h2 className="text-2xl font-bold mb-2" style={{ color: '#efe6d2', fontFamily: "'Tajawal', sans-serif" }}>
+          {language === 'ar' ? 'لا توجد جوائز للعرض' : 'No Prizes Available'}
+        </h2>
+        <p className="text-sm" style={{ color: '#9c8b6e' }}>
+          {language === 'ar' ? 'لا توجد نسخة منشورة للعجلة حاليًا' : 'No published wheel version available.'}
+        </p>
+      </div>
+    );
+  }
 
-  // Build cumulative angle map for proportional sectors
-  const sectorAngles = (() => {
-    if (!useProportional || n === 0) return activePrizes.map((_, i) => ({ start: i * (360 / n), size: 360 / n }));
-    let cumDeg = 0;
-    return activePrizes.map(p => {
-      const size = ((p.probability_bp ?? 0) / 10000) * 360;
-      const start = cumDeg;
-      cumDeg += size;
-      return { start, size };
-    });
-  })();
   const isBusy = gameState === 'spinning' || gameState === 'revealing';
   const effectiveFreeSpins = freeSpinsLeft;
   const spinCost = settings.single_spin_cost || settings.spin_cost_points || 100;
