@@ -41,7 +41,7 @@ export function useWheelV2() {
   const lastValidConfig = useRef<PublicWheelConfig | null>(null);
 
   const fetchConfig = useCallback(async () => {
-    const { data, error } = await supabase.rpc('get_published_wheel_v2_config');
+    const { data, error } = await supabase.rpc('get_wheel_live_config');
     if (error) {
       setError(error.message);
       setRouteState('NETWORK_ERROR');
@@ -191,6 +191,27 @@ export function useWheelV2() {
       setLoading(false);
     })();
   }, [user, fetchConfig, fetchFeatureFlag, fetchMaintenanceMode, fetchFreeSpins, fetchGrandPrize, fetchWinners, fetchLeaderboard]);
+
+  // Realtime: listen for live config changes (revision+checksum notification only)
+  useEffect(() => {
+    if (!user) return;
+    const configChannel = supabase
+      .channel('wheel_live_config_changes')
+      .on(
+        'postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'wheel_live_settings' },
+        () => {
+          // Refetch the authoritative config from RPC — don't trust realtime payload
+          (async () => {
+            const prev = lastValidConfig.current;
+            await fetchConfig();
+            // If refetch fails, keep rendering the old config (last-known-good)
+          })();
+        }
+      )
+      .subscribe();
+    return () => { supabase.removeChannel(configChannel); };
+  }, [user, fetchConfig]);
 
   // Realtime for winner events
   useEffect(() => {

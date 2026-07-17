@@ -161,6 +161,8 @@ export interface SpinResponse {
   batch_id?: string;
   client_request_id?: string;
   published_version_id?: string;
+  live_config_revision?: number;
+  live_config_checksum?: string;
   requested_spin_count?: number;
   payment?: {
     free_spins_before: number;

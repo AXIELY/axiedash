@@ -18,8 +18,8 @@ import {
 interface Props {
   draftVersion: any;
   draftPrizes: any[];
-  onUpdatePrize: (prizeId: string, updates: Record<string, any>) => Promise<void>;
-  onAddPrize: () => Promise<void>;
+  onUpdatePrize: (prizeId: string, updates: Record<string, any>) => void;
+  onAddPrize: () => void;
   onRefetch: () => Promise<void>;
   isRTL: boolean;
 }
@@ -36,15 +36,14 @@ export function PrizesWorkspace({
   draftPrizes,
   onUpdatePrize,
   onAddPrize,
-  onRefetch,
   isRTL,
 }: Props) {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
-  const [localDraft, setLocalDraft] = useState<Record<string, any>>({});
-  const [dirty, setDirty] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [lastSavedAt, setLastSavedAt] = useState<string | null>(null);
+  const [localDraft] = useState<Record<string, any>>({});
+  const [dirty] = useState(false);
+  const [saving] = useState(false);
+  const [lastSavedAt] = useState<string | null>(null);
   const [showAssistModal, setShowAssistModal] = useState(false);
   const [assistType, setAssistType] = useState<AssistType | null>(null);
   const [assistPreviews, setAssistPreviews] = useState<AssistPreview[]>([]);
@@ -86,78 +85,46 @@ export function PrizesWorkspace({
     return (errorsByPrize[effectivePrize.prize_key] || []).map((m) => `[${m.split(' ')[0]}] ${m}`);
   }, [errorsByPrize, effectivePrize]);
 
-  // Local change handler — stores in localDraft, marks dirty
+  // Local change handler — delegates to parent's form state
   const handleChange = useCallback((prizeId: string, patch: Record<string, any>) => {
-    setLocalDraft((prev) => {
-      const existing = prev[prizeId] || {};
-      return { ...prev, [prizeId]: { ...existing, ...patch } };
-    });
-    setDirty(true);
-  }, []);
+    onUpdatePrize(prizeId, patch);
+  }, [onUpdatePrize]);
 
-  // Apply local edits to server
-  const handleSaveDraft = useCallback(async () => {
-    if (!dirty || Object.keys(localDraft).length === 0) return;
-    setSaving(true);
-    try {
-      for (const [prizeId, patch] of Object.entries(localDraft)) {
-        await onUpdatePrize(prizeId, patch);
-      }
-      setLocalDraft({});
-      setDirty(false);
-      setLastSavedAt(new Date().toLocaleTimeString(isRTL ? 'ar' : 'en'));
-      await onRefetch();
-    } finally {
-      setSaving(false);
-    }
-  }, [dirty, localDraft, onUpdatePrize, onRefetch, isRTL]);
+  // No separate save in workspace — parent handles حفظ وتطبيق
+  const handleSaveDraft = useCallback(async () => {}, []);
 
-  const handleDiscard = useCallback(() => {
-    setLocalDraft({});
-    setDirty(false);
-  }, []);
+  const handleDiscard = useCallback(() => {}, []);
 
-  // Selection with dirty guard
+  // Selection — parent tracks dirty state, so no guard needed here
   const handleSelect = useCallback((id: string) => {
-    if (dirty && id !== selectedId) {
-      const ok = window.confirm(isRTL ? 'لديك تعديلات غير محفوظة. هل تريد الانتقال؟' : 'You have unsaved changes. Switch prize?');
-      if (!ok) return;
-      // discard current draft on switch
-      setLocalDraft({});
-      setDirty(false);
-    }
     setSelectedId(id);
-  }, [dirty, selectedId, isRTL]);
+  }, []);
 
   const handleToggleSelect = useCallback((id: string) => {
     setSelectedIds((prev) => prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]);
   }, []);
 
-  const handleDuplicate = useCallback(async (_id: string) => {
-    await onAddPrize();
+  const handleDuplicate = useCallback((_id: string) => {
+    onAddPrize();
   }, [onAddPrize]);
 
-  const handleArchive = useCallback(async (id: string) => {
-    // Disable instead of hard delete (preserve history)
-    await onUpdatePrize(id, { enabled: false });
-    await onRefetch();
-  }, [onUpdatePrize, onRefetch]);
+  const handleArchive = useCallback((id: string) => {
+    onUpdatePrize(id, { enabled: false });
+  }, [onUpdatePrize]);
 
-  const handleReorder = useCallback(async (fromId: string, toId: string) => {
+  const handleReorder = useCallback((fromId: string, toId: string) => {
     const fromIdx = draftPrizes.findIndex((p) => p.id === fromId);
     const toIdx = draftPrizes.findIndex((p) => p.id === toId);
     if (fromIdx === -1 || toIdx === -1) return;
     const reordered = [...draftPrizes];
     const [moved] = reordered.splice(fromIdx, 1);
     reordered.splice(toIdx, 0, moved);
-    // Update display_order for affected
     for (let i = 0; i < reordered.length; i++) {
       if (reordered[i].display_order !== i) {
-        await onUpdatePrize(reordered[i].id, { display_order: i });
+        onUpdatePrize(reordered[i].id, { display_order: i });
       }
     }
-    await onRefetch();
-  }, [draftPrizes, onUpdatePrize, onRefetch]);
+  }, [draftPrizes, onUpdatePrize]);
 
   // Assist actions
   const openAssist = useCallback((type: AssistType) => {
@@ -187,17 +154,15 @@ export function PrizesWorkspace({
   }, [assistType, assistPreviews, draftPrizes, handleChange]);
 
   // Bulk actions
-  const bulkEnable = useCallback(async (enable: boolean) => {
-    for (const id of selectedIds) await onUpdatePrize(id, { enabled: enable });
+  const bulkEnable = useCallback((enable: boolean) => {
+    for (const id of selectedIds) onUpdatePrize(id, { enabled: enable });
     setSelectedIds([]);
-    await onRefetch();
-  }, [selectedIds, onUpdatePrize, onRefetch]);
+  }, [selectedIds, onUpdatePrize]);
 
-  const bulkRarity = useCallback(async (rarity: string) => {
-    for (const id of selectedIds) await onUpdatePrize(id, { rarity });
+  const bulkRarity = useCallback((rarity: string) => {
+    for (const id of selectedIds) onUpdatePrize(id, { rarity });
     setSelectedIds([]);
-    await onRefetch();
-  }, [selectedIds, onUpdatePrize, onRefetch]);
+  }, [selectedIds, onUpdatePrize]);
 
   const bulkDistribute = useCallback(() => {
     openAssist('distribute');
