@@ -20,6 +20,7 @@ export function WheelV2Page({ onNavigate }: WheelV2PageProps) {
   const [rotation, setRotation] = useState(0);
   const [selectedSpinCount, setSelectedSpinCount] = useState(1);
   const [showConfirm, setShowConfirm] = useState(false);
+  const [showInsufficient, setShowInsufficient] = useState(false);
   const [showResult, setShowResult] = useState(false);
   const [resultData, setResultData] = useState<any>(null);
   const [animatingResult, setAnimatingResult] = useState(false);
@@ -88,6 +89,8 @@ export function WheelV2Page({ onNavigate }: WheelV2PageProps) {
       executeSpin(1);
     } else if (selectedSpinCount === 1 && canAfford) {
       executeSpin(1);
+    } else if (!canAfford && freeRemaining === 0) {
+      setShowInsufficient(true);
     } else {
       setShowConfirm(true);
     }
@@ -786,6 +789,54 @@ export function WheelV2Page({ onNavigate }: WheelV2PageProps) {
         </div>
       </div>
 
+      {/* Insufficient Points Modal */}
+      {showInsufficient && (
+        <div
+          className="fixed inset-0 z-50 grid place-items-center p-4"
+          style={{ background: 'rgba(8,5,2,0.84)', backdropFilter: 'blur(6px)' }}
+          onClick={() => setShowInsufficient(false)}
+        >
+          <div
+            className="rounded-2xl p-6 max-w-sm w-full text-center"
+            style={{ background: 'linear-gradient(180deg, #221708, #120c06)', border: '1.5px solid rgba(230,69,92,0.45)' }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="text-4xl mb-3">⚠️</div>
+            <h3 className="font-['Lalezar',cursive] text-xl text-[#f8e7b4] mb-2">
+              {isRTL ? 'رصيدك لا يكفي' : 'Insufficient Points'}
+            </h3>
+            <p className="text-sm text-[#9c8b6e] mb-5">
+              {isRTL
+                ? `تحتاج ${config?.single_spin_cost ?? 100} نقطة للفة الواحدة. رصيدك الحالي ${userPoints.toLocaleString()} نقطة.`
+                : `You need ${config?.single_spin_cost ?? 100} points per spin. Your balance is ${userPoints.toLocaleString()} points.`}
+            </p>
+            <button
+              onClick={() => { setShowInsufficient(false); onNavigate?.('shop'); }}
+              className="w-full rounded-xl py-3 font-bold text-sm transition-transform mb-2"
+              style={{
+                color: '#241705',
+                background: 'linear-gradient(180deg, #fdf0c8, #d9ab4e, #9a7220)',
+                border: 'none',
+                boxShadow: '0 5px 0 #5d420c',
+              }}
+            >
+              {isRTL ? 'شحن النقاط' : 'Charge Points'}
+            </button>
+            <button
+              onClick={() => setShowInsufficient(false)}
+              className="w-full rounded-xl py-2.5 font-bold text-sm transition-transform"
+              style={{
+                color: '#9c8b6e',
+                background: 'transparent',
+                border: '1px solid rgba(214,178,94,0.16)',
+              }}
+            >
+              {isRTL ? 'إغلاق' : 'Close'}
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Confirmation Modal */}
       {showConfirm && (
         <div
@@ -833,14 +884,20 @@ export function WheelV2Page({ onNavigate }: WheelV2PageProps) {
                 </b>
               </div>
             </div>
-            {!canAfford && (
+            {!canAfford && freeRemaining === 0 && (
               <div className="text-xs text-[#e6455c] text-center mb-4 font-bold">
                 {isRTL ? '⚠️ رصيدك لا يكفي' : '⚠️ Insufficient points'}
               </div>
             )}
             <button
-              onClick={() => executeSpin(selectedSpinCount)}
-              disabled={!canAfford || wheel.freeSpinStatus !== 'READY'}
+              onClick={() => {
+                if (!canAfford && freeRemaining === 0) {
+                  setShowInsufficient(true);
+                } else {
+                  executeSpin(selectedSpinCount);
+                }
+              }}
+              disabled={wheel.freeSpinStatus !== 'READY'}
               className="w-full rounded-xl py-3 font-bold text-sm transition-transform disabled:opacity-50"
               style={{
                 color: '#241705',
