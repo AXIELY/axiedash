@@ -257,6 +257,29 @@ export function useSpinWheelGame() {
       client_request_id: string;
       probability_version_id: string;
       recovered?: boolean;
+      request_id?: string;
+      spin_result_id?: string;
+      payment?: {
+        mode: 'FREE' | 'POINTS';
+        single_spin_cost: number;
+        points_before: number;
+        points_deducted: number;
+        points_after_cost: number;
+        free_spins_before: number;
+        free_spins_consumed: number;
+        free_spins_after: number;
+      };
+      prize?: {
+        original_selected_prize_id: string;
+        final_awarded_prize_id: string;
+        reward_grant_id: string | null;
+        points_reward: number;
+        reward_applied: boolean;
+      };
+      final_state?: {
+        points_after_reward: number;
+        free_spins_remaining: number;
+      };
       progress?: {
         before: number;
         after: number;
@@ -314,6 +337,12 @@ export function useSpinWheelGame() {
 
     // Refresh user balance and free-spin count from authoritative server state
     refreshUser();
+    // If server returned authoritative free_spins_after, sync local state immediately
+    if (result.payment?.free_spins_after !== undefined) {
+      setFreeSpinsUsedToday(result.payment.free_spins_consumed > 0
+        ? freeSpinsUsedToday + result.payment.free_spins_consumed
+        : freeSpinsUsedToday);
+    }
     fetchFreeSpinsUsedToday();
 
     return {
