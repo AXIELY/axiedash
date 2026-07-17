@@ -895,6 +895,8 @@ function ConfigEditor({ version, onSave, saving, isRTL }: any) {
           { key: 'ticker_enabled', label: isRTL ? 'شريط الفائزين' : 'Ticker' },
           { key: 'leaderboard_enabled', label: isRTL ? 'المتصدرون' : 'Leaderboard' },
           { key: 'grand_prize_enabled', label: isRTL ? 'الجائزة الكبرى' : 'Grand Prize' },
+          { key: 'jackpot_lock_enabled', label: isRTL ? 'قفل الجائزة الكبرى' : 'Jackpot Lock' },
+          { key: 'streak_enabled', label: isRTL ? 'سلسلة الحظ' : 'Streak' },
         ].map((toggle) => (
           <label key={toggle.key} className="flex items-center gap-2 text-xs cursor-pointer">
             <input type="checkbox" checked={form[toggle.key]} onChange={(e) => update(toggle.key, e.target.checked)}
@@ -919,6 +921,9 @@ function EconomyEditor({ version, onSave, saving, isRTL }: any) {
     free_spins_per_period: version.free_spins_per_period ?? 3,
     free_spin_reset_type: version.free_spin_reset_type || 'DAILY',
     max_spins_per_request: version.max_spins_per_request ?? 10,
+    jackpot_unlock_spins: version.jackpot_unlock_spins ?? 30,
+    streak_spins_required: version.streak_spins_required ?? 3,
+    streak_reward_free_spins: version.streak_reward_free_spins ?? 1,
   });
   const update = (key: string, value: any) => setForm({ ...form, [key]: value });
 
@@ -951,6 +956,23 @@ function EconomyEditor({ version, onSave, saving, isRTL }: any) {
           className="w-full rounded-lg px-3 py-2 text-sm"
           style={{ background: '#120c07', border: '1px solid rgba(214,178,94,0.16)', color: '#efe6d2' }} />
       </Field>
+      <div className="grid grid-cols-3 gap-3">
+        <Field label={isRTL ? 'لفات فتح القفل' : 'Jackpot Unlock Spins'}>
+          <input type="number" value={form.jackpot_unlock_spins} onChange={(e) => update('jackpot_unlock_spins', +e.target.value)}
+            className="w-full rounded-lg px-3 py-2 text-sm"
+            style={{ background: '#120c07', border: '1px solid rgba(214,178,94,0.16)', color: '#efe6d2' }} />
+        </Field>
+        <Field label={isRTL ? 'لفات السلسلة' : 'Streak Spins'}>
+          <input type="number" value={form.streak_spins_required} onChange={(e) => update('streak_spins_required', +e.target.value)}
+            className="w-full rounded-lg px-3 py-2 text-sm"
+            style={{ background: '#120c07', border: '1px solid rgba(214,178,94,0.16)', color: '#efe6d2' }} />
+        </Field>
+        <Field label={isRTL ? 'مكافأة السلسلة' : 'Streak Reward'}>
+          <input type="number" value={form.streak_reward_free_spins} onChange={(e) => update('streak_reward_free_spins', +e.target.value)}
+            className="w-full rounded-lg px-3 py-2 text-sm"
+            style={{ background: '#120c07', border: '1px solid rgba(214,178,94,0.16)', color: '#efe6d2' }} />
+        </Field>
+      </div>
       <div className="text-xs text-[#9c8b6e] p-3 rounded-lg" style={{ background: '#120c07', border: '1px solid rgba(214,178,94,0.16)' }}>
         {isRTL ? 'الخيارات المسموح بها: 1، 5، 10 (افتراضياً)' : 'Allowed spin counts: 1, 5, 10 (default)'}
       </div>

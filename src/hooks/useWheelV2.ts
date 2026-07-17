@@ -94,6 +94,11 @@ export function useWheelV2() {
       ticker_enabled: pub.panels?.ticker_enabled ?? true,
       leaderboard_enabled: pub.panels?.leaderboard_enabled ?? true,
       grand_prize_enabled: pub.grand_prize?.grand_prize_enabled ?? true,
+      jackpot_lock_enabled: pub.grand_prize?.jackpot_lock_enabled ?? true,
+      jackpot_unlock_spins: pub.grand_prize?.jackpot_unlock_spins ?? 30,
+      streak_enabled: pub.streak?.streak_enabled ?? true,
+      streak_spins_required: pub.streak?.streak_spins_required ?? 3,
+      streak_reward_free_spins: pub.streak?.streak_reward_free_spins ?? 1,
       visual_config: pub.visual?.visual_config ?? {},
       prizes: pub.prizes!,
     } as any;

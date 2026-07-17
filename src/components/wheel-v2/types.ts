@@ -133,6 +133,11 @@ export interface WheelV2Config {
   ticker_enabled: boolean;
   leaderboard_enabled: boolean;
   grand_prize_enabled: boolean;
+  jackpot_lock_enabled: boolean;
+  jackpot_unlock_spins: number;
+  streak_enabled: boolean;
+  streak_spins_required: number;
+  streak_reward_free_spins: number;
   visual_config: Record<string, any>;
   prizes: WheelV2Prize[];
 }
@@ -177,6 +182,14 @@ export interface SpinResponse {
     after: number;
     required: number;
     unlocked: boolean;
+    jackpot_lock_enabled?: boolean;
+  };
+  streak?: {
+    progress: number;
+    required: number;
+    reward_free_spins: number;
+    just_completed: boolean;
+    free_spins_awarded: number;
   };
   results?: SpinResultItem[];
 }
@@ -194,6 +207,14 @@ export interface GrandPrizeProgress {
   required: number;
   unlocked: boolean;
   unlocked_at: string | null;
+  jackpot_lock_enabled?: boolean;
+  streak_enabled?: boolean;
+  streak_progress?: number;
+  streak_required?: number;
+  streak_reward_free_spins?: number;
+  streak_free_spins_bonus?: number;
+  free_spins_remaining?: number;
+  free_spins_per_period?: number;
 }
 
 export interface LeaderboardEntry {

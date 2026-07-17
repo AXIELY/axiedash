@@ -456,7 +456,7 @@ export function WheelV2Page({ onNavigate }: WheelV2PageProps) {
               }}
             >
               <h3 className="font-['Lalezar',cursive] text-lg text-[#f8e7b4] mb-2">
-                {grandPrize.unlocked
+                {grandPrize.unlocked || !config.jackpot_lock_enabled
                   ? isRTL ? '💎 الجائزة الكبرى — متاحة!' : '💎 Grand Prize — Unlocked!'
                   : isRTL ? '🔒 الجائزة الكبرى' : '🔒 Grand Prize'}
               </h3>
@@ -504,6 +504,44 @@ export function WheelV2Page({ onNavigate }: WheelV2PageProps) {
                   : isRTL
                     ? `⚡ أكمل ${grandPrize.required} لفة لفتح الجائزة الكبرى`
                     : `⚡ Complete ${grandPrize.required} spins to unlock`}
+              </div>
+            </div>
+          )}
+          {config.grand_prize_enabled && !config.jackpot_lock_enabled && (
+            <div className="rounded-2xl p-4 text-center" style={{ background: '#181008', border: '1px solid rgba(214,178,94,0.38)' }}>
+              <h3 className="font-['Lalezar',cursive] text-lg text-[#f8e7b4] mb-1">
+                {isRTL ? '💎 الجائزة الكبرى' : '💎 Grand Prize'}
+              </h3>
+              <div className="text-xs text-[#9c8b6e]">
+                {isRTL ? 'متاحة دائمًا — لا قفل' : 'Always available — no lock'}
+              </div>
+            </div>
+          )}
+
+          {/* Streak Bar */}
+          {config.streak_enabled && grandPrize && (
+            <div className="rounded-2xl p-4" style={{ background: '#181008', border: '1px solid rgba(214,178,94,0.16)' }}>
+              <div className="flex justify-between items-center mb-2">
+                <span className="text-xs text-[#9c8b6e]">{isRTL ? 'سلسلة الحظ 🔥' : 'Lucky Streak 🔥'}</span>
+                <b className="text-xs text-[#f8e7b4]">
+                  {Math.min((grandPrize.streak_progress ?? 0), config.streak_spins_required)}/{config.streak_spins_required}
+                </b>
+              </div>
+              <div className="h-3 rounded-full overflow-hidden" style={{ background: '#120c07', border: '1px solid rgba(214,178,94,0.16)' }}>
+                <div
+                  className="h-full rounded-full"
+                  style={{
+                    width: `${Math.min(((grandPrize.streak_progress ?? 0) / config.streak_spins_required) * 100, 100)}%`,
+                    background: 'linear-gradient(90deg, #9a7220, #d9ab4e, #f8e7b4)',
+                    boxShadow: '0 0 12px rgba(217,171,78,0.55)',
+                    transition: 'width 0.9s cubic-bezier(0.2,0.9,0.2,1)',
+                  }}
+                />
+              </div>
+              <div className="text-[11px] text-[#9c8b6e] text-center mt-2">
+                {isRTL
+                  ? `أكمل ${config.streak_spins_required} لفات واحصل على ${config.streak_reward_free_spins} لفة مجانية`
+                  : `Complete ${config.streak_spins_required} spins for ${config.streak_reward_free_spins} free spin(s)`}
               </div>
             </div>
           )}
