@@ -978,7 +978,7 @@ export function WheelV2Page({ onNavigate }: WheelV2PageProps) {
                   {groupedResults.map((g, i) => (
                     <div key={i} className="flex items-center justify-between text-sm">
                       <span className="flex items-center gap-2">
-                        <span className="text-lg">{getPrizeIcon(g.prize)}</span>
+                        <span className="text-lg"><PrizeIcon prize={g.prize} size={24} /></span>
                         <span className="text-[#efe6d2]">
                           {isRTL ? g.prize?.name_ar : g.prize?.name_en}
                         </span>
