@@ -1040,19 +1040,80 @@ export function WheelV2Page({ onNavigate }: WheelV2PageProps) {
   );
 }
 
-function getPrizeIcon(prize?: WheelV2Prize): string {
+function getFallbackPrizeIcon(prize?: WheelV2Prize): string {
   if (!prize) return '⭐';
-  if (prize.icon_url) return prize.icon_url;
+
   switch (prize.reward_type) {
-    case 'POINTS': return '⭐';
-    case 'COINS': return '💰';
-    case 'FREE_SPIN': return '🎰';
-    case 'NO_REWARD': return '🎲';
-    case 'MANUAL_SERVICE': return '📱';
-    case 'VIP_ACCESS': return '🏆';
-    case 'GRAND_PRIZE': return '💎';
-    default: return '⭐';
+    case 'POINTS':
+      return '⭐';
+    case 'COINS':
+      return '🪙';
+    case 'FREE_SPIN':
+      return '🎰';
+    case 'NO_REWARD':
+      return '🎲';
+    case 'MANUAL_SERVICE':
+      return '📱';
+    case 'VIP_ACCESS':
+      return '🏆';
+    case 'GRAND_PRIZE':
+      return '💎';
+    default:
+      return '⭐';
   }
+}
+
+function PrizeIcon({
+  prize,
+  size = 64,
+}: {
+  prize?: WheelV2Prize;
+  size?: number;
+}) {
+  const [imageFailed, setImageFailed] = useState(false);
+
+  useEffect(() => {
+    setImageFailed(false);
+  }, [prize?.icon_url]);
+
+  if (prize?.icon_url && !imageFailed) {
+    return (
+      <img
+        src={prize.icon_url}
+        alt={prize.name_ar || prize.name_en || 'Prize'}
+        width={size}
+        height={size}
+        onError={() => setImageFailed(true)}
+        style={{
+          width: `${size}px`,
+          height: `${size}px`,
+          maxWidth: '100%',
+          maxHeight: '100%',
+          objectFit: prize.icon_fit === 'COVER' ? 'cover' : 'contain',
+          transform: `
+            translate(
+              ${prize.icon_offset_x || 0}px,
+              ${prize.icon_offset_y || 0}px
+            )
+            rotate(${prize.icon_rotation || 0}deg)
+            scale(${(prize.icon_scale || 100) / 100})
+          `,
+        }}
+      />
+    );
+  }
+
+  return (
+    <span
+      aria-hidden="true"
+      style={{
+        fontSize: `${Math.max(18, Math.round(size * 0.65))}px`,
+        lineHeight: 1,
+      }}
+    >
+      {getFallbackPrizeIcon(prize)}
+    </span>
+  );
 }
 
 // ─── Safe Route Screen ─────────────────────────────────────
