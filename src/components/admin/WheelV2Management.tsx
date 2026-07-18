@@ -171,15 +171,36 @@ export function WheelV2Management() {
       if (error) {
         setSaveError(error.message);
         showMessage(`${isRTL ? 'فشل الحفظ' : 'Save failed'}: ${error.message}`);
-      } else if (data?.success === false) {
-        const errMsg = data.error === 'LIVE_CONFIG_CHANGED_RELOAD_REQUIRED'
-          ? (isRTL ? 'تم تغيير الإعدادات من قبل مشرف آخر. يرجى إعادة التحميل.' : 'Config changed by another admin. Please reload.')
-          : (data.errors || [data.error || 'Unknown error']).join(', ');
-        setSaveError(errMsg);
-        showMessage(`${isRTL ? 'فشل الحفظ' : 'Save failed'}: ${errMsg}`);
-        if (data.error === 'LIVE_CONFIG_CHANGED_RELOAD_REQUIRED') {
-          await fetchLiveConfig();
-        }
+   } else if (data?.success === false) {
+  const backendDetails =
+    typeof data?.details === 'string'
+      ? data.details
+      : data?.details
+        ? JSON.stringify(data.details)
+        : '';
+
+  const backendErrors = Array.isArray(data?.errors)
+    ? data.errors.map((error: unknown) =>
+        typeof error === 'string' ? error : JSON.stringify(error)
+      )
+    : [];
+
+  const errMsg = [
+    ...backendErrors,
+    data?.error || 'UNKNOWN_ERROR',
+    backendDetails,
+  ]
+    .filter(Boolean)
+    .join(' — ');
+
+  console.error('save_wheel_live_config failed:', data);
+
+  setSaveError(errMsg);
+  showMessage(`فشل الحفظ: ${errMsg}`);
+
+  if (data.error === 'LIVE_CONFIG_CHANGED_RELOAD_REQUIRED') {
+    await fetchLiveConfig();
+  }
       } else if (data?.available) {
         setSaveSuccess(true);
         setDirty(false);
