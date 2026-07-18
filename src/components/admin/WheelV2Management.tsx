@@ -241,21 +241,29 @@ export function WheelV2Management() {
   };
 
   // Build preview prizes
-  const previewPrizes: WheelV2Prize[] = (prizesForm || [])
-    .filter((p) => p.enabled && p.visible_on_wheel)
-    .map((p, i) => {
-      const angle = (p.probability_ppm / 1000000) * 360;
-      const rangeStart = (prizesForm || [])
-        .filter((pp) => pp.enabled && pp.visible_on_wheel)
-        .slice(0, i)
-        .reduce((sum, pp) => sum + (pp.probability_ppm / 1000000) * 360, 0);
-      return {
-        ...p,
-        range_start: Math.round((p.probability_ppm / 1000000) * 1000000 * (rangeStart / 360)),
-        range_end: 0,
-        sector_angle: angle,
-      } as WheelV2Prize;
-    });
+ const visiblePreviewPrizes = (prizesForm || []).filter(
+  (p) => p.enabled && p.visible_on_wheel
+);
+
+const previewPrizeCount = Math.max(visiblePreviewPrizes.length, 1);
+const equalSectorAngle = 360 / previewPrizeCount;
+
+const previewPrizes: WheelV2Prize[] = visiblePreviewPrizes.map((p, i) => {
+  const rangeStart = Math.round(
+    (i / previewPrizeCount) * 1_000_000
+  );
+
+  const rangeEnd = Math.round(
+    ((i + 1) / previewPrizeCount) * 1_000_000
+  );
+
+  return {
+    ...p,
+    range_start: rangeStart,
+    range_end: rangeEnd,
+    sector_angle: equalSectorAngle,
+  } as WheelV2Prize;
+});
 
   if (loading) {
     return <div className="flex items-center justify-center min-h-[60vh] text-[#9c8b6e]">Loading...</div>;
