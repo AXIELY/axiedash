@@ -706,8 +706,11 @@ export function WheelV2Page({ onNavigate }: WheelV2PageProps) {
                       border: `2px solid ${prize.is_grand_prize ? '#e6455c' : prize.wheel_color_end}`,
                     }}
                   >
-                    {prize.is_grand_prize && grandPrize && !grandPrize.unlocked ? '🔒' : getPrizeIcon(prize)}
-                  </div>
+{prize.is_grand_prize && grandPrize && !grandPrize.unlocked ? (
+  '🔒'
+) : (
+  <PrizeIcon prize={prize} size={26} />
+)}                  </div>
                   <div className="min-w-0 flex-1">
                     <div className="font-bold text-sm truncate">{isRTL ? prize.name_ar : prize.name_en}</div>
                     <div className="text-[11px] text-[#9c8b6e] truncate">
