@@ -944,7 +944,12 @@ export function WheelV2Page({ onNavigate }: WheelV2PageProps) {
             {resultData.results?.length === 1 ? (
               <>
                 <div className="text-5xl mb-2" style={{ animation: 'bob 1.6s ease-in-out infinite' }}>
-                  {getPrizeIcon(findPrizeByKey(resultData.results[0].final_awarded_prize_key))}
+                  <PrizeIcon
+  prize={findPrizeByKey(
+    resultData.results[0].final_awarded_prize_key
+  )}
+  size={96}
+/>
                 </div>
                 <div className="font-['Lalezar',cursive] text-2xl text-[#f8e7b4] mb-1">
                   {isRTL ? 'مبروووك!' : 'Congratulations!'}
