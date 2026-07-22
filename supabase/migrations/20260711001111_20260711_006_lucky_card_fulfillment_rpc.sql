@@ -59,7 +59,7 @@ BEGIN
     p_prize_name_ar     => v_round.prize_title,
     p_prize_name_en     => v_round.prize_title,
     p_prize_type        => 'grand',
-    p_prize_value       => 0,
+    p_prize_value => '0',
     p_prize_icon_url    => v_round.prize_image_url,
     p_prize_accent => '#d6b47b',
     p_prize_rarity      => 'legendary',
